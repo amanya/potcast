@@ -55,6 +55,8 @@ class StationController(Protocol):
 
     def set_volume(self, volume: int) -> StationCommandResult: ...
 
+    def recover_output(self) -> StationCommandResult: ...
+
     def status(self) -> StationStatus: ...
 
 
@@ -140,6 +142,10 @@ def create_app(config: AppConfig | None = None, services: AppServices | None = N
     @app.get("/podcast/<podcast_id>")
     def select_podcast(podcast_id: str) -> ResponseReturnValue:
         return _command_response("podcast.select", _station(app).select_podcast(podcast_id))
+
+    @app.get("/output/recover")
+    def recover_output() -> ResponseReturnValue:
+        return _command_response("output.recover", _station(app).recover_output())
 
     @app.get("/volume")
     def volume() -> ResponseReturnValue:

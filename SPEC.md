@@ -330,8 +330,8 @@ Backend startup failures and unexpected non-zero output process exits are not tr
 episode completion. They update output status with structured errors such as
 `backend_start_failed` or `backend_process_failed`, disconnect the backend, and leave the
 station idle so the playback supervisor does not repeatedly relaunch the same failing
-episode in a tight loop. A later manual command such as `/play`, `/next`, or channel or
-podcast selection may retry playback.
+episode in a tight loop. A later manual command such as `/output/recover`, `/play`,
+`/next`, or channel or podcast selection may retry playback.
 
 ### 8.1 Output Architecture
 
@@ -553,7 +553,16 @@ Moves to the previous podcast in the active channel.
 When `next` or `previous` selects a playable downloaded episode, the station service
 updates runtime state and sends that episode to the output backend.
 
-### 9.3 Channel Commands
+### 9.3 Output Commands
+
+`GET /output/recover`
+
+Clears an output backend error and retries the currently selected episode once. If the
+output backend is not in `error`, the command is idempotent and returns the current
+status without replaying the episode. If no selected podcast has a playable downloaded
+episode, the station remains `idle`.
+
+### 9.4 Channel Commands
 
 `GET /channel/next`
 
@@ -571,7 +580,7 @@ Unknown channels return a structured `unknown_channel` command error. Known chan
 changes select the first playable downloaded podcast in that channel, if one exists,
 and send it to the output backend.
 
-### 9.4 Podcast Commands
+### 9.5 Podcast Commands
 
 `GET /podcast/next`
 
@@ -589,7 +598,7 @@ Unknown podcasts in the active channel return a structured `unknown_podcast` com
 error. Podcasts without a playable downloaded episode return a structured
 `podcast_unavailable` command error.
 
-### 9.5 Volume Commands
+### 9.6 Volume Commands
 
 `GET /volume`
 
@@ -610,7 +619,7 @@ Raises volume by a configured step, defaulting to 5.
 
 Lowers volume by a configured step, defaulting to 5.
 
-### 9.6 Feed Commands
+### 9.7 Feed Commands
 
 `GET /feeds/refresh`
 
@@ -624,14 +633,14 @@ If another refresh is already running, Potcast rejects the overlapping trigger a
 
 Returns configured feeds and their current status.
 
-### 9.7 Output Status
+### 9.8 Output Status
 
-The current API exposes output status inside `GET /status`. Dedicated `/stream` and
-`/outputs` endpoints are not implemented yet. Future output-specific endpoints may be
-added for listener URLs, AirPlay, Chromecast, Bluetooth, local audio device selection, or
-Home Assistant targets.
+The current API exposes output status inside `GET /status` and output recovery through
+`GET /output/recover`. Dedicated `/stream` and `/outputs` endpoints are not implemented
+yet. Future output-specific endpoints may be added for listener URLs, AirPlay,
+Chromecast, Bluetooth, local audio device selection, or Home Assistant targets.
 
-### 9.8 Response Format
+### 9.9 Response Format
 
 Successful command response:
 

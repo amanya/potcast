@@ -10,7 +10,9 @@ the selected local episode to the output backend. While the station is playing, 
 also watches the active output process and advances to the next playable podcast when an
 episode finishes normally. Backend startup failures and unexpected output process exits
 are surfaced in `/status` as structured output errors, and the station is left idle
-instead of immediately relaunching the same failing episode.
+instead of immediately relaunching the same failing episode. Operators can use
+`GET /output/recover` to clear an output error and retry the currently selected episode
+once.
 
 ## Quick Start
 
@@ -30,6 +32,7 @@ The HTTP server exposes:
 - `GET /play`, `/pause`, `/toggle`, `/stop`, `/next`, and `/previous`.
 - `GET /channel/next`, `/channel/previous`, and `/channel/<channel_id>`.
 - `GET /podcast/next`, `/podcast/previous`, and `/podcast/<podcast_id>`.
+- `GET /output/recover` to retry the selected episode after an output error.
 - `GET /volume`, `/volume/<level>`, `/volume/up`, and `/volume/down`.
 - `GET /feeds` and `/feeds/refresh` for feed status and manual refresh.
 

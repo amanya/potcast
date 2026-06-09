@@ -96,7 +96,10 @@ station moves to `idle`.
 Backend startup failures and unexpected process exits are output errors, not completion
 events. The backend reports structured errors in `OutputStatus.error`; the station moves
 to `idle` and the supervisor does not immediately relaunch the same episode. This keeps
-crashing `ffmpeg` or `mpv` processes from causing a tight retry loop.
+crashing `ffmpeg` or `mpv` processes from causing a tight retry loop. The
+operator-facing recovery path is `StationService.recover_output()`, exposed as
+`GET /output/recover`, which only retries the current selected episode when the backend
+is in `error`.
 
 ## HTTP API
 
@@ -108,9 +111,9 @@ codes:
 - `podcast_unavailable`: `409`
 - other command failures: `500`
 
-The implemented API includes health, status, station commands, channel and podcast
-selection, volume commands, feed status, and manual feed refresh. The planned `/stream`
-and `/outputs` endpoints are not implemented yet.
+The implemented API includes health, status, station commands, output recovery, channel
+and podcast selection, volume commands, feed status, and manual feed refresh. The planned
+`/stream` and `/outputs` endpoints are not implemented yet.
 
 ## Outputs
 

@@ -191,6 +191,19 @@ class StationService:
         state = self._activate(state, downloads)
         return self._status(state, downloads)
 
+    def recover_output(self) -> StationCommandResult:
+        """Clear an output error and retry the selected episode once."""
+
+        state = self._load_state()
+        downloads = self.state_store.load_download_metadata()
+        if self.output.status().state != "error":
+            return self._result(state, downloads)
+
+        self.output.stop()
+        state = self._play_selected(state, downloads)
+        self._save_state(state)
+        return self._result(state, downloads)
+
     def advance_if_finished(self) -> StationCommandResult:
         """Advance once when the active output reports normal episode completion."""
 

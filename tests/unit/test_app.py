@@ -63,6 +63,9 @@ class SpyStationService:
         self.volume = volume
         return self._command("set_volume", volume)
 
+    def recover_output(self) -> StationCommandResult:
+        return self._command("recover_output")
+
     def status(self) -> StationStatus:
         self.calls.append(("status", None))
         if self.status_override is not None:
@@ -206,6 +209,7 @@ def test_station_command_routes_call_station_service() -> None:
         ("/channel/previous", ("previous_channel", None), "channel.previous"),
         ("/podcast/next", ("next", None), "podcast.next"),
         ("/podcast/previous", ("previous", None), "podcast.previous"),
+        ("/output/recover", ("recover_output", None), "output.recover"),
     ]
 
     for path, expected_call, expected_command in expected_calls:

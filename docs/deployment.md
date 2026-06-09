@@ -160,13 +160,17 @@ auto-advance.
 If the backend cannot start, `/status` reports `output.state: "error"` with
 `backend_start_failed`. If the process exits unexpectedly with a non-zero code, `/status`
 reports `backend_process_failed`. In both cases the station is left idle so the runtime
-does not repeatedly relaunch the same failing episode every supervisor tick.
+does not repeatedly relaunch the same failing episode every supervisor tick. After
+fixing the operator-visible cause, such as a missing command or unreachable output
+target, call `GET /output/recover` to clear the backend error and retry the currently
+selected episode once.
 
 Implemented command endpoints:
 
 - `GET /play`, `/pause`, `/toggle`, `/stop`, `/next`, `/previous`
 - `GET /channel/next`, `/channel/previous`, `/channel/<channel_id>`
 - `GET /podcast/next`, `/podcast/previous`, `/podcast/<podcast_id>`
+- `GET /output/recover`
 - `GET /volume`, `/volume/<level>`, `/volume/up`, `/volume/down`
 - `GET /feeds`, `/feeds/refresh`
 

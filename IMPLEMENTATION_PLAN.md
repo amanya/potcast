@@ -260,6 +260,7 @@ Endpoints:
 - `/podcast/next`
 - `/podcast/previous`
 - `/podcast/<podcast_id>`
+- `/output/recover`
 - `/volume`
 - `/volume/<level>`
 - `/volume/up`
