@@ -140,16 +140,37 @@ def test_icecast_backend_detects_completed_process_without_real_subprocess() -> 
     backend = IcecastOutputBackend(IcecastOutputConfig(source_password="secret"), launcher=launcher)
     backend.play_episode(episode())
 
-    running = backend.consume_finished_episode()
+    running = backend.consume_playback_event()
     launcher.processes[0].return_code = 0
-    finished = backend.consume_finished_episode()
-    duplicate = backend.consume_finished_episode()
+    finished = backend.consume_playback_event()
+    duplicate = backend.consume_playback_event()
 
-    assert running is False
-    assert finished is True
-    assert duplicate is False
+    assert running is None
+    assert finished is not None
+    assert finished.outcome == "completed"
+    assert duplicate is None
     assert backend.status().state == "idle"
     assert backend.status().connected is False
+
+
+def test_icecast_backend_detects_unexpected_process_exit_without_real_subprocess() -> None:
+    launcher = RecordingLauncher()
+    backend = IcecastOutputBackend(IcecastOutputConfig(source_password="secret"), launcher=launcher)
+    backend.play_episode(episode())
+    launcher.processes[0].return_code = 1
+
+    event = backend.consume_playback_event()
+    duplicate = backend.consume_playback_event()
+
+    assert event is not None
+    assert event.outcome == "failed"
+    assert event.error is not None
+    assert event.error.code == "backend_process_failed"
+    assert duplicate is None
+    assert backend.status().state == "error"
+    assert backend.status().connected is False
+    assert backend.status().error is not None
+    assert backend.status().error.message == "Output process exited unexpectedly with code 1."
 
 
 def test_local_audio_backend_builds_expected_mpv_command() -> None:
@@ -178,6 +199,21 @@ def test_local_audio_backend_uses_injected_launcher_without_starting_mpv() -> No
     assert launcher.commands[0][0] == "mpv"
     assert backend.status().state == "playing"
     assert backend.status().connected is True
+
+
+def test_local_audio_backend_detects_unexpected_process_exit_without_real_subprocess() -> None:
+    launcher = RecordingLauncher()
+    backend = LocalAudioOutputBackend(LocalAudioOutputConfig(enabled=True), launcher=launcher)
+    backend.play_episode(episode())
+    launcher.processes[0].return_code = 2
+
+    event = backend.consume_playback_event()
+
+    assert event is not None
+    assert event.outcome == "failed"
+    assert backend.status().state == "error"
+    assert backend.status().error is not None
+    assert backend.status().error.code == "backend_process_failed"
 
 
 def test_backend_errors_surface_as_structured_output_status() -> None:

@@ -181,6 +181,12 @@ class OutputStatus:
 
 
 @dataclass(frozen=True)
+class OutputPlaybackEvent:
+    outcome: str
+    error: OutputError | None = None
+
+
+@dataclass(frozen=True)
 class CommandError:
     code: str
     message: str

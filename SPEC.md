@@ -305,7 +305,7 @@ Unsupported media should be skipped.
 Potcast selects playable downloads from the currently selected channel and sends the
 selected local episode to the configured output backend. The packaged implementation
 supervises the active output process and advances to the next playable podcast in the
-active channel when the current episode process exits.
+active channel when the current episode process exits normally.
 
 Station sequence:
 
@@ -313,8 +313,8 @@ Station sequence:
 2. Select active podcast within that channel.
 3. Send the downloaded latest episode for that podcast to the configured output.
 4. HTTP commands can advance to another podcast in the same channel or switch channels.
-5. Output supervision advances automatically when an episode finishes while the station
-   is playing.
+5. Output supervision advances automatically when an episode finishes normally while the
+   station is playing.
 
 If a podcast does not have a downloaded episode, Potcast should skip it.
 
@@ -325,6 +325,13 @@ when there is no selected local episode.
 
 Paused and stopped stations do not auto-advance, even if a previously active output
 process has ended.
+
+Backend startup failures and unexpected non-zero output process exits are not treated as
+episode completion. They update output status with structured errors such as
+`backend_start_failed` or `backend_process_failed`, disconnect the backend, and leave the
+station idle so the playback supervisor does not repeatedly relaunch the same failing
+episode in a tight loop. A later manual command such as `/play`, `/next`, or channel or
+podcast selection may retry playback.
 
 ### 8.1 Output Architecture
 
@@ -345,7 +352,11 @@ Output backend responsibilities:
 - Report output health and errors.
 - Support start, stop, pause, next item, and metadata updates.
 
-The first output backend interface supports `start`, `pause`, `stop`, `play_episode`, `set_volume`, `status`, and a consumed completion check used by the station supervisor. Subprocess-backed implementations construct commands through injectable launchers so tests can assert command construction and process completion without launching real external programs.
+The first output backend interface supports `start`, `pause`, `stop`, `play_episode`,
+`set_volume`, `status`, and a consumed playback-event check used by the station
+supervisor. Subprocess-backed implementations construct commands through injectable
+launchers so tests can assert command construction and distinguish normal completion
+from failed process exits without launching real external programs.
 
 Supported first-version output backends:
 
@@ -496,6 +507,10 @@ also includes top-level `feed_monitor` timing and status fields.
   }
 }
 ```
+
+When output playback fails, `output.state` is `error`, `connected` is `false`, and
+`output.error` contains a structured code and message. Startup failures use
+`backend_start_failed`; unexpected subprocess exits use `backend_process_failed`.
 
 ### 9.2 Station Commands
 

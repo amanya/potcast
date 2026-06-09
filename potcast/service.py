@@ -192,13 +192,18 @@ class StationService:
         return self._status(state, downloads)
 
     def advance_if_finished(self) -> StationCommandResult:
-        """Advance once when the active output reports that its episode ended."""
+        """Advance once when the active output reports normal episode completion."""
 
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
         if state.station_status != "playing":
             return self._result(state, downloads)
-        if not self.output.consume_finished_episode():
+        event = self.output.consume_playback_event()
+        if event is None:
+            return self._result(state, downloads)
+        if event.outcome != "completed":
+            state = replace(state, station_status="idle")
+            self._save_state(state)
             return self._result(state, downloads)
 
         state = self._selector(downloads).next_podcast(state)
@@ -248,6 +253,8 @@ class StationService:
             return replace(state, station_status="idle")
 
         self.output.play_episode(episode)
+        if self.output.status().state == "error":
+            return replace(state, station_status="idle")
         return replace(state, station_status="playing")
 
     def _is_playing_selected(

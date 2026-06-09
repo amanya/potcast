@@ -186,6 +186,7 @@ class OutputBackend(Protocol):
     def play_episode(self, episode: Episode) -> None: ...
     def set_volume(self, volume: int) -> None: ...
     def status(self) -> OutputStatus: ...
+    def consume_playback_event(self) -> OutputPlaybackEvent | None: ...
 ```
 
 Implement:
@@ -202,6 +203,7 @@ Tests:
 - Icecast backend builds expected `ffmpeg` command.
 - Local audio backend builds expected `mpv` command.
 - Backend errors surface as structured output status.
+- Normal output process completion is distinguished from unexpected process failure.
 
 ## 9. Phase 6: Station Service
 

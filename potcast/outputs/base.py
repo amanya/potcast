@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
-from potcast.models import Episode, OutputError, OutputStatus
+from potcast.models import Episode, OutputError, OutputPlaybackEvent, OutputStatus
 
 
 class OutputBackend(Protocol):
@@ -25,7 +25,7 @@ class OutputBackend(Protocol):
 
     def status(self) -> OutputStatus: ...
 
-    def consume_finished_episode(self) -> bool: ...
+    def consume_playback_event(self) -> OutputPlaybackEvent | None: ...
 
 
 class ProcessHandle(Protocol):
@@ -57,7 +57,7 @@ class FakeOutputBackend:
     def __init__(self, *, backend: str = "fake", volume: int = 100) -> None:
         self.calls: list[tuple[str, object | None]] = []
         self._status = OutputStatus(backend=backend, volume=volume)
-        self._finished = False
+        self._playback_event: OutputPlaybackEvent | None = None
 
     def start(self) -> None:
         self.calls.append(("start", None))
@@ -79,7 +79,7 @@ class FakeOutputBackend:
 
     def play_episode(self, episode: Episode) -> None:
         self.calls.append(("play_episode", episode.identity))
-        self._finished = False
+        self._playback_event = None
         self._status = replace(
             self._status,
             state="playing",
@@ -93,22 +93,31 @@ class FakeOutputBackend:
         self._status = replace(self._status, volume=volume, error=None)
 
     def fail(self, code: str, message: str) -> None:
+        error = OutputError(code=code, message=message)
         self._status = replace(
             self._status,
             state="error",
             connected=False,
-            error=OutputError(code=code, message=message),
+            error=error,
         )
+        self._playback_event = OutputPlaybackEvent(outcome="failed", error=error)
 
     def finish_current_episode(self) -> None:
-        self._finished = self._status.current_episode_identity is not None
+        if self._status.current_episode_identity is not None:
+            self._playback_event = OutputPlaybackEvent(outcome="completed")
+
+    def consume_playback_event(self) -> OutputPlaybackEvent | None:
+        event = self._playback_event
+        if event is None:
+            return None
+        self._playback_event = None
+        if event.outcome == "completed":
+            self._status = replace(self._status, state="idle", connected=False, error=None)
+        return event
 
     def consume_finished_episode(self) -> bool:
-        if not self._finished:
-            return False
-        self._finished = False
-        self._status = replace(self._status, state="idle", connected=False, error=None)
-        return True
+        event = self.consume_playback_event()
+        return event is not None and event.outcome == "completed"
 
     def status(self) -> OutputStatus:
         return self._status

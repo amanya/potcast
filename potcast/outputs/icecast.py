@@ -6,7 +6,13 @@ from dataclasses import replace
 from pathlib import Path
 from urllib.parse import quote
 
-from potcast.models import Episode, IcecastOutputConfig, OutputError, OutputStatus
+from potcast.models import (
+    Episode,
+    IcecastOutputConfig,
+    OutputError,
+    OutputPlaybackEvent,
+    OutputStatus,
+)
 from potcast.outputs.base import (
     ProcessHandle,
     ProcessLauncher,
@@ -87,14 +93,27 @@ class IcecastOutputBackend:
     def status(self) -> OutputStatus:
         return self._status
 
-    def consume_finished_episode(self) -> bool:
+    def consume_playback_event(self) -> OutputPlaybackEvent | None:
         if self._process is None:
-            return False
-        if self._process.poll() is None:
-            return False
+            return None
+        return_code = self._process.poll()
+        if return_code is None:
+            return None
         self._process = None
-        self._status = replace(self._status, state="idle", connected=False, error=None)
-        return True
+        if return_code == 0:
+            self._status = replace(self._status, state="idle", connected=False, error=None)
+            return OutputPlaybackEvent(outcome="completed")
+
+        error = OutputError(
+            code="backend_process_failed",
+            message=f"Output process exited unexpectedly with code {return_code}.",
+        )
+        self._status = replace(self._status, state="error", connected=False, error=error)
+        return OutputPlaybackEvent(outcome="failed", error=error)
+
+    def consume_finished_episode(self) -> bool:
+        event = self.consume_playback_event()
+        return event is not None and event.outcome == "completed"
 
     def build_command(self, episode: Episode, *, volume: int | None = None) -> list[str]:
         return build_ffmpeg_icecast_command(

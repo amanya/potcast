@@ -89,9 +89,14 @@ error, and the scheduler-provided `next_refresh_at`.
 
 The playback supervisor calls `StationService.advance_if_finished()`. That service method
 only advances when persisted station state is `playing` and the output backend consumes a
-finished-episode signal. Paused and stopped stations ignore completion checks. If no
+normal completion event. Paused and stopped stations ignore completion checks. If no
 podcast in the active channel has a playable download when completion is consumed, the
 station moves to `idle`.
+
+Backend startup failures and unexpected process exits are output errors, not completion
+events. The backend reports structured errors in `OutputStatus.error`; the station moves
+to `idle` and the supervisor does not immediately relaunch the same episode. This keeps
+crashing `ffmpeg` or `mpv` processes from causing a tight retry loop.
 
 ## HTTP API
 
@@ -117,7 +122,8 @@ current implementation.
 streams it to Icecast. `LocalAudioOutputBackend` builds an `mpv` command for the selected
 local episode and audio device. Both backends accept an injected process launcher so unit
 tests can assert command construction and process-completion detection without starting
-real processes.
+real processes. Exit code `0` is treated as normal episode completion. Non-zero exits are
+reported as `backend_process_failed`.
 
 ## Adding An Output Backend
 
@@ -130,7 +136,7 @@ def stop() -> None: ...
 def play_episode(episode) -> None: ...
 def set_volume(volume: int) -> None: ...
 def status() -> OutputStatus: ...
-def consume_finished_episode() -> bool: ...
+def consume_playback_event() -> OutputPlaybackEvent | None: ...
 ```
 
 Add config validation, a runtime factory branch in `build_output_backend()`, and tests

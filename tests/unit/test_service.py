@@ -181,6 +181,83 @@ def test_advance_if_finished_moves_to_next_playable_podcast() -> None:
     assert output.calls == [("play_episode", "science-hour-episode")]
 
 
+def test_startup_failure_surfaces_output_error_and_does_not_mark_station_playing() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            current_channel_id="sleep", current_podcast_id="history-extra", volume=70
+        ),
+        downloads=downloads("history-extra"),
+    )
+    output = FakeOutputBackend(volume=70)
+    service, output = make_service(store, output)
+
+    def fail_playback(episode: Episode) -> None:
+        output.calls.append(("play_episode", episode.identity))
+        output.fail("backend_start_failed", "ffmpeg missing")
+
+    output.play_episode = fail_playback  # type: ignore[method-assign]
+
+    result = service.play()
+
+    assert result.ok is True
+    assert store.state.station_status == "idle"
+    assert result.status.output.state == "error"
+    assert result.status.output.error is not None
+    assert result.status.output.error.code == "backend_start_failed"
+    assert output.calls == [("play_episode", "history-extra-episode")]
+
+
+def test_unexpected_process_exit_surfaces_output_error_without_advancing() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra", "science-hour"),
+    )
+    service, output = make_service(store)
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+
+    result = service.advance_if_finished()
+
+    assert result.ok is True
+    assert store.state.station_status == "idle"
+    assert store.state.current_podcast_id == "history-extra"
+    assert result.status.output.state == "error"
+    assert result.status.output.error is not None
+    assert result.status.output.error.code == "backend_process_failed"
+    assert output.calls == []
+
+
+def test_failing_episode_is_not_relaunched_by_repeated_supervisor_ticks() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra", "science-hour"),
+    )
+    service, output = make_service(store)
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+
+    first = service.advance_if_finished()
+    second = service.advance_if_finished()
+
+    assert first.ok is True
+    assert second.ok is True
+    assert store.state.station_status == "idle"
+    assert store.state.current_podcast_id == "history-extra"
+    assert output.calls == []
+
+
 def test_advance_if_finished_idles_when_no_playable_podcast_is_available() -> None:
     store = MemoryStateStore(
         state=RuntimeState(

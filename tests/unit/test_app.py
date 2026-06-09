@@ -14,6 +14,7 @@ from potcast.models import (
     FeedMetadata,
     FeedMonitorStatus,
     FeedRefreshTriggerResult,
+    OutputError,
     OutputStatus,
     PodcastConfig,
     StationCommandResult,
@@ -26,6 +27,7 @@ class SpyStationService:
         self.calls: list[tuple[str, object | None]] = []
         self.volume = 70
         self.errors: dict[str, CommandError] = {}
+        self.status_override: StationStatus | None = None
 
     def play(self) -> StationCommandResult:
         return self._command("play")
@@ -63,6 +65,8 @@ class SpyStationService:
 
     def status(self) -> StationStatus:
         self.calls.append(("status", None))
+        if self.status_override is not None:
+            return self.status_override
         return _status(volume=self.volume)
 
     def _command(self, name: str, arg: object | None = None) -> StationCommandResult:
@@ -154,6 +158,24 @@ def test_status_returns_station_status_json() -> None:
     assert payload["status"]["active_episode"]["downloaded_at"] == "2026-06-09T12:00:00+00:00"
     assert payload["status"]["output"]["backend"] == "fake"
     assert service.calls == [("status", None)]
+
+
+def test_status_serializes_structured_output_error() -> None:
+    client, service = client_and_service()
+    service.status_override = _status(volume=70, output_error_code="backend_process_failed")
+
+    response = client.get("/status")
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["status"]["station_state"] == "idle"
+    assert payload["status"]["output"]["state"] == "error"
+    assert payload["status"]["output"]["connected"] is False
+    assert payload["status"]["output"]["error"] == {
+        "code": "backend_process_failed",
+        "message": "Output process exited unexpectedly with code 1.",
+    }
 
 
 def test_status_includes_feed_monitor_when_configured() -> None:
@@ -379,14 +401,14 @@ def test_volume_up_and_down_clamp_to_bounds() -> None:
     ]
 
 
-def _status(*, volume: int) -> StationStatus:
+def _status(*, volume: int, output_error_code: str | None = None) -> StationStatus:
     podcast = PodcastConfig(
         id="history-extra",
         name="History Extra",
         feed_url="https://example.com/history-extra.xml",
     )
     return StationStatus(
-        station_state="playing",
+        station_state="idle" if output_error_code is not None else "playing",
         active_channel=ChannelConfig(id="sleep", name="Sleep", podcasts=(podcast,)),
         active_podcast=podcast,
         active_episode=Episode(
@@ -402,10 +424,18 @@ def _status(*, volume: int) -> StationStatus:
         volume=volume,
         output=OutputStatus(
             backend="fake",
-            state="playing",
-            connected=True,
+            state="error" if output_error_code is not None else "playing",
+            connected=output_error_code is None,
             current_episode_identity="episode-1",
             volume=volume,
+            error=(
+                OutputError(
+                    code=output_error_code,
+                    message="Output process exited unexpectedly with code 1.",
+                )
+                if output_error_code is not None
+                else None
+            ),
         ),
     )
 
