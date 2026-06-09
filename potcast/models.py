@@ -139,6 +139,22 @@ class DownloadMetadata:
 
 
 @dataclass(frozen=True)
+class OutputError:
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class OutputStatus:
+    backend: str
+    state: str = "stopped"
+    connected: bool = False
+    current_episode_identity: str | None = None
+    volume: int = 100
+    error: OutputError | None = None
+
+
+@dataclass(frozen=True)
 class ChannelConfig:
     id: str
     name: str

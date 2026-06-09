@@ -15,3 +15,7 @@ class StorageError(PotcastError):
 
 class DownloadError(PotcastError):
     """Raised when episode media cannot be downloaded or safely replaced."""
+
+
+class OutputBackendError(PotcastError):
+    """Raised when an output backend cannot start, control, or stop playback."""

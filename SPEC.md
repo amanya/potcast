@@ -176,6 +176,15 @@ Phase 3 persists these files as UTF-8 JSON objects in `storage.data_dir`:
 - `feeds.json`: keyed by podcast ID, with feed URL, feed title, latest episode metadata, entry counts, last check timestamp, status, and optional structured error fields.
 - `downloads.json`: keyed by podcast ID, with episode identity, media URL/type, local file path, download timestamp, status, and title.
 
+Phase 5 adds a structured in-memory output status model used by output backends:
+
+- `backend`: output backend ID, such as `icecast` or `local_audio`.
+- `state`: `stopped`, `idle`, `playing`, `paused`, or `error`.
+- `connected`: whether the backend currently has an active output process or connection.
+- `current_episode_identity`: the episode identity currently assigned to the backend, when any.
+- `volume`: backend output volume from 0 to 100.
+- `error`: optional structured error with `code` and `message`.
+
 Downloaded episode media is stored below `storage.episodes_dir` in a per-podcast directory. Final filenames are stable and filesystem-safe, derived from the podcast ID, a hash of the episode identity, and the media extension.
 
 ### 6.1 Channel
@@ -300,6 +309,8 @@ Output backend responsibilities:
 - Report output health and errors.
 - Support start, stop, pause, next item, and metadata updates.
 
+The first output backend interface supports `start`, `pause`, `stop`, `play_episode`, `set_volume`, and `status`. Subprocess-backed implementations construct commands through injectable launchers so tests can assert command construction without launching real external programs.
+
 Supported first-version output backends:
 
 - `icecast`: publishes a continuous network stream.
@@ -310,6 +321,8 @@ Future backends may include `airplay`, `chromecast`, `bluetooth`, or `home_assis
 ### 8.2 Icecast Output
 
 The Icecast output publishes a continuous encoded audio stream to an Icecast server.
+
+Phase 5 provides direct `ffmpeg` command construction for streaming one selected local episode to Icecast. The backend applies configured host, port, source password, mount, stream metadata, format, bitrate, sample rate, and software volume. Process launching is injected so command construction remains testable without Icecast or `ffmpeg`.
 
 Recommended first-version implementation options:
 
@@ -338,6 +351,8 @@ Recommended implementation:
 - Keep local audio behind the same output interface as Icecast.
 - Apply station volume through software gain when possible.
 - Allow the configured audio device to be passed to the player.
+
+Phase 5 provides `mpv` command construction using the configured player command, audio device, mixer strategy, and software volume. Process launching is injected so tests do not require `mpv` or audio hardware.
 
 For Docker-based Raspberry Pi deployments, the container may need access to the host audio device, for example `/dev/snd`, and membership in the appropriate audio group. A native service is acceptable for Raspberry Pi local-audio deployments if that is simpler and more reliable.
 
