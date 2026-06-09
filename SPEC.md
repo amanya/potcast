@@ -170,6 +170,14 @@ Suggested state files:
 
 The YAML file remains the source of truth for user intent. Runtime metadata can be regenerated from feeds and downloads if needed.
 
+Phase 3 persists these files as UTF-8 JSON objects in `storage.data_dir`:
+
+- `state.json`: `station_status`, `current_channel_id`, `current_podcast_id`, `volume`, and `previous_podcast_ids`.
+- `feeds.json`: keyed by podcast ID, with feed URL, feed title, latest episode metadata, entry counts, last check timestamp, status, and optional structured error fields.
+- `downloads.json`: keyed by podcast ID, with episode identity, media URL/type, local file path, download timestamp, status, and title.
+
+Downloaded episode media is stored below `storage.episodes_dir` in a per-podcast directory. Final filenames are stable and filesystem-safe, derived from the podcast ID, a hash of the episode identity, and the media extension.
+
 ### 6.1 Channel
 
 A channel is an ordered group of podcasts.

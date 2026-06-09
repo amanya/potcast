@@ -104,6 +104,41 @@ class FeedParseResult:
 
 
 @dataclass(frozen=True)
+class RuntimeState:
+    station_status: str = "stopped"
+    current_channel_id: str | None = None
+    current_podcast_id: str | None = None
+    volume: int = 100
+    previous_podcast_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FeedMetadata:
+    podcast_id: str
+    feed_url: str
+    status: str
+    last_checked_at: datetime | None = None
+    feed_title: str | None = None
+    latest_episode: Episode | None = None
+    entry_count: int = 0
+    playable_entry_count: int = 0
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class DownloadMetadata:
+    podcast_id: str
+    episode_identity: str
+    media_url: str
+    media_type: str
+    local_file: Path
+    downloaded_at: datetime
+    status: str = "downloaded"
+    title: str | None = None
+
+
+@dataclass(frozen=True)
 class ChannelConfig:
     id: str
     name: str
