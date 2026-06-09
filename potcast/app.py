@@ -395,6 +395,9 @@ def _playback_supervisor_to_json(status: PlaybackSupervisorStatus) -> dict[str, 
     return {
         "state": status.state,
         "last_error": _output_error_to_json(status.last_error),
+        "next_retry_at": _value_to_json(status.next_retry_at),
+        "retry_attempts": status.retry_attempts,
+        "max_retry_attempts": status.max_retry_attempts,
     }
 
 

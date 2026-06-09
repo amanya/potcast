@@ -186,7 +186,31 @@ def test_status_serializes_structured_output_error() -> None:
             "code": "backend_process_failed",
             "message": "Output process exited unexpectedly with code 1.",
         },
+        "next_retry_at": None,
+        "retry_attempts": 0,
+        "max_retry_attempts": 0,
     }
+
+
+def test_status_serializes_playback_retry_window() -> None:
+    client, service = client_and_service()
+    service.status_override = _status(
+        volume=70,
+        output_error_code="backend_process_failed",
+        next_retry_at=datetime(2026, 6, 9, 12, 0, 5, tzinfo=timezone.utc),
+        retry_attempts=0,
+        max_retry_attempts=1,
+    )
+
+    response = client.get("/status")
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["status"]["playback_supervisor"]["next_retry_at"] == (
+        "2026-06-09T12:00:05+00:00"
+    )
+    assert payload["status"]["playback_supervisor"]["retry_attempts"] == 0
+    assert payload["status"]["playback_supervisor"]["max_retry_attempts"] == 1
 
 
 def test_status_includes_feed_monitor_when_configured() -> None:
@@ -413,7 +437,14 @@ def test_volume_up_and_down_clamp_to_bounds() -> None:
     ]
 
 
-def _status(*, volume: int, output_error_code: str | None = None) -> StationStatus:
+def _status(
+    *,
+    volume: int,
+    output_error_code: str | None = None,
+    next_retry_at: datetime | None = None,
+    retry_attempts: int = 0,
+    max_retry_attempts: int = 0,
+) -> StationStatus:
     podcast = PodcastConfig(
         id="history-extra",
         name="History Extra",
@@ -459,6 +490,9 @@ def _status(*, volume: int, output_error_code: str | None = None) -> StationStat
                 if output_error_code is not None
                 else None
             ),
+            next_retry_at=next_retry_at,
+            retry_attempts=retry_attempts,
+            max_retry_attempts=max_retry_attempts,
         ),
     )
 

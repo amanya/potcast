@@ -175,6 +175,9 @@ class OutputError:
 class PlaybackSupervisorStatus:
     state: str
     last_error: OutputError | None = None
+    next_retry_at: datetime | None = None
+    retry_attempts: int = 0
+    max_retry_attempts: int = 0
 
 
 @dataclass(frozen=True)

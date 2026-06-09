@@ -100,10 +100,13 @@ to `idle`, persists that structured error in runtime state, and the supervisor d
 immediately relaunch the same episode. `/status` reports this as
 `playback_supervisor.state: "blocked"` with `last_error` set, so the last stop reason is
 still visible after the output backend object has been recreated. This keeps crashing
-`ffmpeg` or `mpv` processes from causing a tight retry loop. The operator-facing recovery
-path is `StationService.recover_output()`, exposed as `GET /output/recover`, which
-retries the current selected episode when either the backend is in `error` or persisted
-supervisor state is blocked.
+`ffmpeg` or `mpv` processes from causing a tight retry loop. The supervisor also keeps a
+small in-memory retry policy: by default it schedules one automatic retry after a short
+delay, exposes the due time and attempt counters in `/status`, and then remains blocked
+if the retry fails. The operator-facing recovery path is
+`StationService.recover_output()`, exposed as `GET /output/recover`, which retries the
+current selected episode when either the backend is in `error` or persisted supervisor
+state is blocked.
 
 ## HTTP API
 

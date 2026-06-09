@@ -332,8 +332,9 @@ Backend startup failures and unexpected non-zero output process exits are not tr
 episode completion. They update output status with structured errors such as
 `backend_start_failed` or `backend_process_failed`, disconnect the backend, and leave the
 station idle so the playback supervisor does not repeatedly relaunch the same failing
-episode in a tight loop. A later manual command such as `/output/recover`, `/play`,
-`/next`, or channel or podcast selection may retry playback.
+episode in a tight loop. The runtime schedules at most one automatic output retry after
+the supervisor policy delay. A later manual command such as `/output/recover`,
+`/play`, `/next`, or channel or podcast selection may also retry playback.
 
 ### 8.1 Output Architecture
 
@@ -508,7 +509,10 @@ also includes top-level `feed_monitor` timing and status fields.
     },
     "playback_supervisor": {
       "state": "watching",
-      "last_error": null
+      "last_error": null,
+      "next_retry_at": null,
+      "retry_attempts": 0,
+      "max_retry_attempts": 1
     }
   }
 }
@@ -520,7 +524,9 @@ When output playback fails, `output.state` is `error`, `connected` is `false`, a
 station also persists the same structured error in `state.json` and reports
 `playback_supervisor.state` as `blocked` with `last_error` set until a later successful
 playback attempt or explicit station stop clears it. This makes the last supervisor stop
-reason visible even if the backend object has been recreated.
+reason visible even if the backend object has been recreated. When an automatic retry is
+scheduled, `playback_supervisor.next_retry_at` shows the due time and retry counters show
+how many automatic attempts have been made out of the bounded policy.
 
 ### 9.2 Station Commands
 

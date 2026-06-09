@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from potcast.models import (
@@ -23,6 +24,8 @@ from potcast.models import (
 from potcast.outputs.base import OutputBackend
 from potcast.station import Randomizer, StationSelector
 
+Clock = Callable[[], datetime]
+
 
 class StationStateStore(Protocol):
     """Persistence required by the station service."""
@@ -32,6 +35,31 @@ class StationStateStore(Protocol):
     def save_runtime_state(self, state: RuntimeState) -> None: ...
 
     def load_download_metadata(self) -> dict[str, DownloadMetadata]: ...
+
+
+@dataclass(frozen=True)
+class OutputRetryPolicy:
+    """Bounded retry policy used by the playback supervisor."""
+
+    max_attempts: int = 1
+    initial_delay: timedelta = timedelta(seconds=10)
+
+    def __post_init__(self) -> None:
+        if self.max_attempts < 0:
+            raise ValueError("Output retry max_attempts must not be negative.")
+        if self.max_attempts > 0 and self.initial_delay.total_seconds() <= 0:
+            raise ValueError("Output retry initial_delay must be greater than zero.")
+
+    def next_delay(self, attempt_number: int) -> timedelta | None:
+        if attempt_number < 1 or attempt_number > self.max_attempts:
+            return None
+        return self.initial_delay * attempt_number
+
+
+@dataclass(frozen=True)
+class _OutputRetryState:
+    attempts: int = 0
+    next_retry_at: datetime | None = None
 
 
 class StationService:
@@ -45,12 +73,17 @@ class StationService:
         output: OutputBackend,
         *,
         randomizer: Randomizer | None = None,
+        retry_policy: OutputRetryPolicy | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self.channels = tuple(channels)
         self.station = station
         self.state_store = state_store
         self.output = output
         self.randomizer = randomizer
+        self.retry_policy = retry_policy or OutputRetryPolicy()
+        self._clock = clock or _utc_now
+        self._retry_state = _OutputRetryState()
 
     def play(self) -> StationCommandResult:
         state = self._load_state()
@@ -90,6 +123,7 @@ class StationService:
                 station_status="stopped",
                 playback_supervisor_error=None,
             )
+            self._reset_retry()
         self._save_state(state)
         return self._result(state, downloads)
 
@@ -208,6 +242,7 @@ class StationService:
             return self._result(state, downloads)
 
         self.output.stop()
+        self._reset_retry()
         state = self._play_selected(state, downloads)
         self._save_state(state)
         return self._result(state, downloads)
@@ -217,16 +252,22 @@ class StationService:
 
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
+        if state.playback_supervisor_error is not None:
+            state = self._retry_output_if_due(state, downloads)
+            self._save_state(state)
+            return self._result(state, downloads)
         if state.station_status != "playing":
             return self._result(state, downloads)
         event = self.output.consume_playback_event()
         if event is None:
             return self._result(state, downloads)
         if event.outcome != "completed":
+            error = self._event_error(event)
+            self._schedule_retry(error)
             state = replace(
                 state,
                 station_status="idle",
-                playback_supervisor_error=self._event_error(event),
+                playback_supervisor_error=error,
             )
             self._save_state(state)
             return self._result(state, downloads)
@@ -284,11 +325,14 @@ class StationService:
         self.output.play_episode(episode)
         output_status = self.output.status()
         if output_status.state == "error":
+            error = self._output_status_error()
+            self._schedule_retry(error)
             return replace(
                 state,
                 station_status="idle",
-                playback_supervisor_error=self._output_status_error(),
+                playback_supervisor_error=error,
             )
+        self._reset_retry()
         return replace(state, station_status="playing", playback_supervisor_error=None)
 
     def _is_playing_selected(
@@ -338,10 +382,51 @@ class StationService:
             return PlaybackSupervisorStatus(
                 state="blocked",
                 last_error=state.playback_supervisor_error,
+                next_retry_at=self._retry_state.next_retry_at,
+                retry_attempts=self._retry_state.attempts,
+                max_retry_attempts=self.retry_policy.max_attempts,
             )
         if state.station_status == "playing":
-            return PlaybackSupervisorStatus(state="watching")
-        return PlaybackSupervisorStatus(state="idle")
+            return PlaybackSupervisorStatus(
+                state="watching",
+                retry_attempts=self._retry_state.attempts,
+                max_retry_attempts=self.retry_policy.max_attempts,
+            )
+        return PlaybackSupervisorStatus(
+            state="idle",
+            retry_attempts=self._retry_state.attempts,
+            max_retry_attempts=self.retry_policy.max_attempts,
+        )
+
+    def _retry_output_if_due(
+        self,
+        state: RuntimeState,
+        downloads: Mapping[str, DownloadMetadata],
+    ) -> RuntimeState:
+        next_retry_at = self._retry_state.next_retry_at
+        if next_retry_at is None or self._clock() < next_retry_at:
+            return state
+
+        self.output.stop()
+        self._retry_state = replace(
+            self._retry_state,
+            attempts=self._retry_state.attempts + 1,
+            next_retry_at=None,
+        )
+        return self._play_selected(state, downloads)
+
+    def _schedule_retry(self, _error: OutputError) -> None:
+        if self._retry_state.next_retry_at is not None:
+            return
+        next_attempt = self._retry_state.attempts + 1
+        delay = self.retry_policy.next_delay(next_attempt)
+        self._retry_state = replace(
+            self._retry_state,
+            next_retry_at=self._clock() + delay if delay is not None else None,
+        )
+
+    def _reset_retry(self) -> None:
+        self._retry_state = _OutputRetryState()
 
     def _event_error(self, event: OutputPlaybackEvent) -> OutputError:
         error = event.error
@@ -432,3 +517,7 @@ def _episode_from_download(download: DownloadMetadata) -> Episode:
         local_file=download.local_file,
         downloaded_at=download.downloaded_at,
     )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)

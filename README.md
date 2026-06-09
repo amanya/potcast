@@ -10,9 +10,10 @@ the selected local episode to the output backend. While the station is playing, 
 also watches the active output process and advances to the next playable podcast when an
 episode finishes normally. Backend startup failures and unexpected output process exits
 are surfaced in `/status` as structured output and playback supervisor errors, and the
-station is left idle instead of immediately relaunching the same failing episode.
-Operators can use `GET /output/recover` to clear an output error and retry the currently
-selected episode once.
+station is left idle instead of immediately relaunching the same failing episode. The
+supervisor schedules one delayed automatic retry and exposes the retry window in
+`/status`. Operators can use `GET /output/recover` to clear an output error and retry
+the currently selected episode immediately.
 
 ## Quick Start
 

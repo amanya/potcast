@@ -26,7 +26,7 @@ from potcast.outputs.base import OutputBackend, ProcessLauncher
 from potcast.outputs.icecast import IcecastOutputBackend
 from potcast.outputs.local_audio import LocalAudioOutputBackend
 from potcast.scheduler import PeriodicScheduler
-from potcast.service import StationService
+from potcast.service import OutputRetryPolicy, StationService
 from potcast.state import JsonStateStore, ensure_data_directories
 
 LOGGER = logging.getLogger(__name__)
@@ -119,7 +119,13 @@ def build_runtime(
     state_store = JsonStateStore(config.storage.data_dir)
     _initialize_runtime_state(state_store, config)
     output = build_output_backend(config, process_launcher=process_launcher)
-    station = StationService(config.channels, config.station, state_store, output)
+    station = StationService(
+        config.channels,
+        config.station,
+        state_store,
+        output,
+        retry_policy=OutputRetryPolicy(),
+    )
 
     fetcher = HttpxFeedFetcher(
         timeout_seconds=config.feeds.download_timeout_seconds,

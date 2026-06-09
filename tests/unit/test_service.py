@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from potcast.models import (
@@ -13,7 +14,7 @@ from potcast.models import (
     StationConfig,
 )
 from potcast.outputs.base import FakeOutputBackend
-from potcast.service import StationService
+from potcast.service import OutputRetryPolicy, StationService
 
 
 class MemoryStateStore:
@@ -73,6 +74,9 @@ def downloads(*podcast_ids: str) -> dict[str, DownloadMetadata]:
 def make_service(
     store: MemoryStateStore,
     output: FakeOutputBackend | None = None,
+    *,
+    retry_policy: OutputRetryPolicy | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> tuple[StationService, FakeOutputBackend]:
     backend = output or FakeOutputBackend(volume=70)
     service = StationService(
@@ -83,6 +87,8 @@ def make_service(
         StationConfig(shuffle_podcasts=False, volume=70),
         store,
         backend,
+        retry_policy=retry_policy,
+        clock=clock,
     )
     return service, backend
 
@@ -262,6 +268,119 @@ def test_unexpected_process_exit_surfaces_output_error_without_advancing() -> No
     assert result.status.output.error is not None
     assert result.status.output.error.code == "backend_process_failed"
     assert output.calls == []
+
+
+def test_output_failure_schedules_bounded_retry_without_immediate_relaunch() -> None:
+    clock = MutableClock(datetime(2026, 6, 9, 12, tzinfo=timezone.utc))
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra", "science-hour"),
+    )
+    service, output = make_service(
+        store,
+        retry_policy=OutputRetryPolicy(max_attempts=1, initial_delay=timedelta(seconds=5)),
+        clock=clock,
+    )
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+
+    failed = service.advance_if_finished()
+    not_due = service.advance_if_finished()
+
+    assert failed.status.playback_supervisor.state == "blocked"
+    assert failed.status.playback_supervisor.next_retry_at == datetime(
+        2026, 6, 9, 12, 0, 5, tzinfo=timezone.utc
+    )
+    assert failed.status.playback_supervisor.retry_attempts == 0
+    assert failed.status.playback_supervisor.max_retry_attempts == 1
+    assert not_due.status.playback_supervisor.next_retry_at == datetime(
+        2026, 6, 9, 12, 0, 5, tzinfo=timezone.utc
+    )
+    assert output.calls == []
+
+
+def test_output_retry_runs_once_when_due() -> None:
+    clock = MutableClock(datetime(2026, 6, 9, 12, tzinfo=timezone.utc))
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra", "science-hour"),
+    )
+    service, output = make_service(
+        store,
+        retry_policy=OutputRetryPolicy(max_attempts=1, initial_delay=timedelta(seconds=5)),
+        clock=clock,
+    )
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+    service.advance_if_finished()
+    clock.advance(timedelta(seconds=5))
+
+    result = service.advance_if_finished()
+
+    assert result.ok is True
+    assert store.state.station_status == "playing"
+    assert store.state.playback_supervisor_error is None
+    assert result.status.playback_supervisor.state == "watching"
+    assert result.status.playback_supervisor.next_retry_at is None
+    assert output.calls == [
+        ("stop", None),
+        ("play_episode", "history-extra-episode"),
+    ]
+
+
+def test_output_retry_is_not_rescheduled_after_policy_attempts_are_exhausted() -> None:
+    clock = MutableClock(datetime(2026, 6, 9, 12, tzinfo=timezone.utc))
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra"),
+    )
+    output = FakeOutputBackend(volume=70)
+    service, output = make_service(
+        store,
+        output,
+        retry_policy=OutputRetryPolicy(max_attempts=1, initial_delay=timedelta(seconds=5)),
+        clock=clock,
+    )
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+    service.advance_if_finished()
+
+    def fail_playback(episode: Episode) -> None:
+        output.calls.append(("play_episode", episode.identity))
+        output.fail("backend_start_failed", "ffmpeg missing")
+
+    output.play_episode = fail_playback  # type: ignore[method-assign]
+    clock.advance(timedelta(seconds=5))
+
+    first_retry = service.advance_if_finished()
+    second_tick = service.advance_if_finished()
+
+    assert first_retry.status.playback_supervisor.state == "blocked"
+    assert first_retry.status.playback_supervisor.next_retry_at is None
+    assert first_retry.status.playback_supervisor.retry_attempts == 1
+    assert second_tick.status.playback_supervisor.retry_attempts == 1
+    assert output.calls == [
+        ("stop", None),
+        ("play_episode", "history-extra-episode"),
+    ]
 
 
 def test_failing_episode_is_not_relaunched_by_repeated_supervisor_ticks() -> None:
@@ -565,3 +684,14 @@ def output_error() -> OutputError:
         code="backend_process_failed",
         message="Output process exited unexpectedly with code 1.",
     )
+
+
+class MutableClock:
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, delta: timedelta) -> None:
+        self.now += delta

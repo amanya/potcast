@@ -162,10 +162,12 @@ If the backend cannot start, `/status` reports `output.state: "error"` with
 reports `backend_process_failed`. In both cases the station is left idle, and `/status`
 also reports `playback_supervisor.state: "blocked"` with the same structured
 `last_error` persisted in `state.json`. This prevents repeated relaunches every
-supervisor tick and keeps the last stop reason visible after a restart. After fixing the
-operator-visible cause, such as a missing command or unreachable output target, call
-`GET /output/recover` to clear the backend or persisted supervisor error and retry the
-currently selected episode once.
+supervisor tick and keeps the last stop reason visible after a restart. The runtime
+schedules one automatic retry after a short delay and exposes `next_retry_at`,
+`retry_attempts`, and `max_retry_attempts` under `playback_supervisor` in `/status`.
+After fixing the operator-visible cause, such as a missing command or unreachable output
+target, call `GET /output/recover` to clear the backend or persisted supervisor error and
+retry the currently selected episode immediately.
 
 Implemented command endpoints:
 
