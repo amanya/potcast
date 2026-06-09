@@ -148,10 +148,12 @@ def build_runtime(
     scheduler = PeriodicScheduler(
         interval=timedelta(minutes=config.feeds.refresh_interval_minutes),
         job=refresh_service.trigger_refresh,
+        name="potcast-feed-refresh-scheduler",
     )
     playback_scheduler = PeriodicScheduler(
         interval=timedelta(seconds=1),
         job=station.advance_if_finished,
+        name="potcast-playback-supervisor",
     )
     feeds = ScheduledFeedMonitor(refresh_service, scheduler)
     services = RuntimeServices(

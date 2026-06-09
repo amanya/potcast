@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 Clock = Callable[[], datetime]
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -27,11 +29,13 @@ class PeriodicScheduler:
         interval: timedelta,
         job: Callable[[], object],
         clock: Clock | None = None,
+        name: str = "potcast-periodic-scheduler",
     ) -> None:
         if interval.total_seconds() <= 0:
             raise ValueError("Scheduler interval must be greater than zero.")
         self.interval = interval
         self.job = job
+        self.name = name
         self._clock = clock or _utc_now
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -69,7 +73,7 @@ class PeriodicScheduler:
             self._stop_event.clear()
             self._thread = threading.Thread(
                 target=self._run_loop,
-                name="potcast-periodic-scheduler",
+                name=self.name,
                 daemon=True,
             )
             self._thread.start()
@@ -95,8 +99,21 @@ class PeriodicScheduler:
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
-            self.run_once()
+            self._run_once_safely()
             self._stop_event.wait(self.interval.total_seconds())
+
+    def _run_once_safely(self) -> None:
+        try:
+            self.run_once()
+        except Exception:
+            with self._lock:
+                now = self._clock()
+                self._last_run_at = now
+                self._next_run_at = now + self.interval
+            LOGGER.exception(
+                "Scheduled job failed",
+                extra={"scheduler_name": self.name},
+            )
 
 
 def _utc_now() -> datetime:

@@ -88,6 +88,10 @@ for the configured interval before the next tick. `/status` and `/feeds` expose 
 monitor status, including `running`, latest start and finish times, latest result or
 error, and the scheduler-provided `next_refresh_at`.
 
+Background scheduler loops log unexpected job exceptions with the scheduler name and
+continue scheduling the next tick. Direct `run_once()` and `run_due()` calls still surface
+exceptions to tests and maintenance callers.
+
 The playback supervisor calls `StationService.advance_if_finished()`. That service method
 only advances when persisted station state is `playing` and the output backend consumes a
 normal completion event. Paused and stopped stations ignore completion checks. If no

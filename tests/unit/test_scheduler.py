@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from potcast.scheduler import PeriodicScheduler
@@ -49,3 +50,27 @@ def test_scheduler_run_due_only_runs_after_next_scheduled_time() -> None:
     assert early is False
     assert due is True
     assert calls == ["tick", "tick"]
+
+
+def test_background_tick_logs_job_failure_and_schedules_next_tick(caplog) -> None:  # type: ignore[no-untyped-def]
+    clock = ManualClock()
+
+    def fail() -> None:
+        raise RuntimeError("feed refresh exploded")
+
+    scheduler = PeriodicScheduler(
+        interval=timedelta(minutes=30),
+        job=fail,
+        clock=clock,
+        name="potcast-feed-refresh-scheduler",
+    )
+
+    with caplog.at_level(logging.ERROR):
+        scheduler._run_once_safely()
+
+    status = scheduler.status()
+    assert status.last_run_at == datetime(2026, 6, 9, 12, tzinfo=timezone.utc)
+    assert status.next_run_at == datetime(2026, 6, 9, 12, 30, tzinfo=timezone.utc)
+    record = next(record for record in caplog.records if record.message == "Scheduled job failed")
+    assert record.scheduler_name == "potcast-feed-refresh-scheduler"
+    assert record.exc_info is not None
