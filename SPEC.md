@@ -432,33 +432,43 @@ Returns service health.
 
 `GET /status`
 
-Returns current station, output, and feed state.
+Returns current station and output state.
 
 ```json
 {
-  "active": true,
-  "stream_url": "http://nas.local:8000/potcast.mp3",
-  "output": {
-    "backend": "icecast",
-    "connected": true,
-    "mount": "/potcast.mp3"
-  },
-  "channel": {
-    "id": "sleep",
-    "name": "Sleep"
-  },
-  "podcast": {
-    "id": "history-extra",
-    "name": "History Extra"
-  },
-  "episode": {
-    "title": "Episode title",
-    "published_at": "2026-06-08T10:00:00Z"
-  },
-  "volume": 70,
-  "feed_monitor": {
-    "last_run_at": "2026-06-08T20:15:00Z",
-    "next_run_at": "2026-06-08T20:45:00Z"
+  "ok": true,
+  "status": {
+    "station_state": "playing",
+    "active_channel": {
+      "id": "sleep",
+      "name": "Sleep",
+      "podcasts": []
+    },
+    "active_podcast": {
+      "id": "history-extra",
+      "name": "History Extra",
+      "feed_url": "https://example.com/history-extra/rss"
+    },
+    "active_episode": {
+      "title": "Episode title",
+      "identity": "episode-guid",
+      "guid": "episode-guid",
+      "published_at": "2026-06-08T10:00:00+00:00",
+      "media_url": "https://example.com/history-extra.mp3",
+      "media_type": "audio/mpeg",
+      "duration": null,
+      "local_file": "/data/episodes/history-extra/latest.mp3",
+      "downloaded_at": "2026-06-08T20:15:00+00:00"
+    },
+    "volume": 70,
+    "output": {
+      "backend": "icecast",
+      "state": "playing",
+      "connected": true,
+      "current_episode_identity": "episode-guid",
+      "volume": 70,
+      "error": null
+    }
   }
 }
 ```
@@ -542,7 +552,7 @@ error. Podcasts without a playable downloaded episode return a structured
 
 `GET /volume`
 
-Returns current station gain.
+Returns current station gain and station status.
 
 `GET /volume/<level>`
 
@@ -625,7 +635,14 @@ Successful command response:
 {
   "ok": true,
   "command": "next",
-  "status": {}
+  "status": {
+    "station_state": "playing",
+    "active_channel": {},
+    "active_podcast": {},
+    "active_episode": {},
+    "volume": 70,
+    "output": {}
+  }
 }
 ```
 
