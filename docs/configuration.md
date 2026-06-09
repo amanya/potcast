@@ -68,8 +68,9 @@ may include a structured `playback_supervisor_error` after an output failure blo
 automatic playback advance. Automatic output retry timing is kept in memory and exposed
 through `/status`; it is not written to `state.json`. Because retry timing is in memory,
 `playback_supervisor.state` can report `retry_scheduled` before a delayed retry,
-`exhausted` after retry attempts are spent, or `blocked` after a restart when only the
-persisted error remains.
+`exhausted` after retry attempts are spent, or `blocked` when operator action is needed,
+such as after a restart when only the persisted error remains or after a failed manual
+recovery attempt.
 
 Downloaded media is stored below `episodes_dir` in one directory per podcast. Final file
 names are derived from the podcast ID, a hash of the episode identity, and the media

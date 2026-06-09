@@ -14,8 +14,10 @@ station is left idle instead of immediately relaunching the same failing episode
 supervisor schedules one delayed automatic retry and exposes whether recovery is
 scheduled, exhausted, or blocked for manual action in `/status`. Operators can use
 `GET /output/recover` to clear an output error and retry the currently selected episode
-immediately. Potcast logs output failure, scheduled retry, retry attempt, retry success,
-retry exhaustion, and manual recovery events with structured fields for log collectors.
+immediately. If manual recovery fails, Potcast keeps the supervisor blocked and waits for
+another operator command instead of scheduling another automatic retry. Potcast logs
+output failure, scheduled retry, retry attempt, retry success, retry exhaustion, and
+manual recovery events with structured fields for log collectors.
 
 ## Quick Start
 

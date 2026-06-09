@@ -108,7 +108,8 @@ one automatic retry after a short delay and exposes the due time and attempt cou
 `StationService.recover_output()`, exposed as `GET /output/recover`, which retries the
 current selected episode when either the backend is in `error` or persisted supervisor
 state is blocked. If that manual retry reaches the backend and playback fails again, the
-service returns a structured `output_recovery_failed` command error.
+service returns a structured `output_recovery_failed` command error, keeps
+`playback_supervisor.state` blocked, and does not schedule another automatic retry.
 
 `StationService` emits structured log records around the same recovery lifecycle:
 failure, scheduled retry, retry attempt, retry success, retry exhaustion, and manual

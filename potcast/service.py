@@ -249,7 +249,7 @@ class StationService:
         )
         self.output.stop()
         self._reset_retry()
-        state = self._play_selected(state, downloads)
+        state = self._play_selected(state, downloads, schedule_retry=False)
         if state.playback_supervisor_error is None:
             LOGGER.info(
                 "Manual output recovery succeeded",
@@ -344,6 +344,8 @@ class StationService:
         self,
         state: RuntimeState,
         downloads: Mapping[str, DownloadMetadata],
+        *,
+        schedule_retry: bool = True,
     ) -> RuntimeState:
         state = self._activate(state, downloads)
         episode = self._active_episode(state, downloads)
@@ -359,7 +361,8 @@ class StationService:
         output_status = self.output.status()
         if output_status.state == "error":
             error = self._output_status_error()
-            self._schedule_retry(error)
+            if schedule_retry:
+                self._schedule_retry(error)
             blocked_state = replace(
                 state,
                 station_status="idle",

@@ -585,7 +585,9 @@ the command is idempotent and returns the current status without replaying the e
 If no selected podcast has a playable downloaded episode, the station remains `idle`.
 If the recovery attempt reaches the backend but playback fails again, the response is a
 structured `output_recovery_failed` command error and the status keeps the latest output
-error visible.
+error visible with `playback_supervisor.state: "blocked"`. A failed manual recovery does
+not schedule another automatic retry; the operator should fix the visible cause and issue
+another playback or recovery command.
 
 ### 9.4 Channel Commands
 

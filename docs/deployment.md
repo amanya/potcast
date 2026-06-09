@@ -175,7 +175,9 @@ logging prints readable messages; collectors can use record fields such as `erro
 After fixing the operator-visible cause, such as a missing command or unreachable output
 target, call `GET /output/recover` to clear the backend or persisted supervisor error and
 retry the currently selected episode immediately. If that immediate retry fails, Potcast
-returns a structured `output_recovery_failed` command error.
+returns a structured `output_recovery_failed` command error and leaves
+`playback_supervisor.state` as `"blocked"` without scheduling another automatic retry.
+Fix the visible cause and issue another playback or recovery command when ready.
 
 Implemented command endpoints:
 

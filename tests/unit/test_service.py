@@ -644,7 +644,45 @@ def test_recover_output_returns_structured_error_when_retry_fails() -> None:
     assert result.error.message == "Output recovery failed: ffmpeg missing"
     assert store.state.playback_supervisor_error is not None
     assert store.state.playback_supervisor_error.code == "backend_start_failed"
-    assert result.status.playback_supervisor.state == "retry_scheduled"
+    assert result.status.playback_supervisor.state == "blocked"
+    assert result.status.playback_supervisor.next_retry_at is None
+    assert result.status.playback_supervisor.retry_attempts == 0
+    assert output.calls == [
+        ("stop", None),
+        ("play_episode", "history-extra-episode"),
+    ]
+
+
+def test_failed_manual_recovery_does_not_schedule_automatic_retry() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="idle",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+            playback_supervisor_error=output_error(),
+        ),
+        downloads=downloads("history-extra"),
+    )
+    output = FakeOutputBackend(volume=70)
+    service, output = make_service(
+        store,
+        output,
+        retry_policy=OutputRetryPolicy(max_attempts=1, initial_delay=timedelta(seconds=5)),
+    )
+
+    def fail_playback(episode: Episode) -> None:
+        output.calls.append(("play_episode", episode.identity))
+        output.fail("backend_start_failed", "ffmpeg missing")
+
+    output.play_episode = fail_playback  # type: ignore[method-assign]
+
+    recovery = service.recover_output()
+    tick = service.advance_if_finished()
+
+    assert recovery.ok is False
+    assert recovery.status.playback_supervisor.state == "blocked"
+    assert tick.status.playback_supervisor.state == "blocked"
     assert output.calls == [
         ("stop", None),
         ("play_episode", "history-extra-episode"),
