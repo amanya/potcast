@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 
@@ -71,6 +72,35 @@ class PodcastConfig:
     id: str
     name: str
     feed_url: str
+
+
+@dataclass(frozen=True)
+class Episode:
+    title: str
+    identity: str
+    guid: str | None
+    published_at: datetime | None
+    media_url: str
+    media_type: str
+    duration: str | None = None
+    local_file: Path | None = None
+    downloaded_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class FeedParseError:
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class FeedParseResult:
+    ok: bool
+    latest_episode: Episode | None = None
+    error: FeedParseError | None = None
+    feed_title: str | None = None
+    entry_count: int = 0
+    playable_entry_count: int = 0
 
 
 @dataclass(frozen=True)
