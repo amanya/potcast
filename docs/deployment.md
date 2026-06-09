@@ -160,18 +160,22 @@ auto-advance.
 If the backend cannot start, `/status` reports `output.state: "error"` with
 `backend_start_failed`. If the process exits unexpectedly with a non-zero code, `/status`
 reports `backend_process_failed`. In both cases the station is left idle, and `/status`
-also reports `playback_supervisor.state: "blocked"` with the same structured
-`last_error` persisted in `state.json`. This prevents repeated relaunches every
-supervisor tick and keeps the last stop reason visible after a restart. The runtime
-schedules one automatic retry after a short delay and exposes `next_retry_at`,
-`retry_attempts`, and `max_retry_attempts` under `playback_supervisor` in `/status`.
+also reports the same structured `last_error`, persisted in `state.json`. This prevents
+repeated relaunches every supervisor tick and keeps the last stop reason visible after a
+restart. The runtime schedules one automatic retry after a short delay and exposes
+`playback_supervisor.state: "retry_scheduled"`, `next_retry_at`, `retry_attempts`, and
+`max_retry_attempts` in `/status`. If the retry policy has no attempts left,
+`playback_supervisor.state` becomes `"exhausted"`; after a process restart with only the
+persisted error available, it is `"blocked"` until an operator command retries or stops
+the station.
 The same recovery path writes structured log records for the failure, scheduled retry,
 retry attempt, retry success, retry exhaustion, and manual recovery actions. Default CLI
 logging prints readable messages; collectors can use record fields such as `error_code`,
 `podcast_id`, `episode_identity`, `retry_attempt`, and `next_retry_at`.
 After fixing the operator-visible cause, such as a missing command or unreachable output
 target, call `GET /output/recover` to clear the backend or persisted supervisor error and
-retry the currently selected episode immediately.
+retry the currently selected episode immediately. If that immediate retry fails, Potcast
+returns a structured `output_recovery_failed` command error.
 
 Implemented command endpoints:
 

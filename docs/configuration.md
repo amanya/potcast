@@ -66,7 +66,10 @@ Startup creates both directories. Runtime state is stored as `state.json`, `feed
 and `downloads.json` in `data_dir`. `state.json` includes the selected station state and
 may include a structured `playback_supervisor_error` after an output failure blocks
 automatic playback advance. Automatic output retry timing is kept in memory and exposed
-through `/status`; it is not written to `state.json`.
+through `/status`; it is not written to `state.json`. Because retry timing is in memory,
+`playback_supervisor.state` can report `retry_scheduled` before a delayed retry,
+`exhausted` after retry attempts are spent, or `blocked` after a restart when only the
+persisted error remains.
 
 Downloaded media is stored below `episodes_dir` in one directory per podcast. Final file
 names are derived from the podcast ID, a hash of the episode identity, and the media

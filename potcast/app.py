@@ -281,6 +281,8 @@ def _status_code(error: CommandError) -> int:
         return 400
     if error.code == "podcast_unavailable":
         return 409
+    if error.code == "output_recovery_failed":
+        return 503
     return 500
 
 

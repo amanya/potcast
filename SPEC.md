@@ -522,14 +522,17 @@ When output playback fails, `output.state` is `error`, `connected` is `false`, a
 `output.error` contains a structured code and message. Startup failures use
 `backend_start_failed`; unexpected subprocess exits use `backend_process_failed`. The
 station also persists the same structured error in `state.json` and reports
-`playback_supervisor.state` as `blocked` with `last_error` set until a later successful
-playback attempt or explicit station stop clears it. This makes the last supervisor stop
-reason visible even if the backend object has been recreated. When an automatic retry is
-scheduled, `playback_supervisor.next_retry_at` shows the due time and retry counters show
-how many automatic attempts have been made out of the bounded policy. The station
-service also logs output failure, scheduled retry, retry attempt, retry success, retry
-exhaustion, and manual recovery events with structured fields such as `error_code`,
-`podcast_id`, `episode_identity`, `retry_attempt`, and `next_retry_at`.
+`playback_supervisor.last_error` until a later successful playback attempt or explicit
+station stop clears it. `playback_supervisor.state` is `retry_scheduled` while an
+automatic retry is waiting, `exhausted` when the bounded automatic policy has no retry
+remaining, and `blocked` when no in-memory retry is scheduled but the persisted error
+still requires operator action, such as after process restart. This makes the last
+supervisor stop reason visible even if the backend object has been recreated. When an
+automatic retry is scheduled, `playback_supervisor.next_retry_at` shows the due time and
+retry counters show how many automatic attempts have been made out of the bounded policy.
+The station service also logs output failure, scheduled retry, retry attempt, retry
+success, retry exhaustion, and manual recovery events with structured fields such as
+`error_code`, `podcast_id`, `episode_identity`, `retry_attempt`, and `next_retry_at`.
 
 ### 9.2 Station Commands
 
@@ -580,6 +583,9 @@ Clears an output backend error and retries the currently selected episode once. 
 output backend is not in `error` and no persisted playback supervisor error is blocked,
 the command is idempotent and returns the current status without replaying the episode.
 If no selected podcast has a playable downloaded episode, the station remains `idle`.
+If the recovery attempt reaches the backend but playback fails again, the response is a
+structured `output_recovery_failed` command error and the status keeps the latest output
+error visible.
 
 ### 9.4 Channel Commands
 

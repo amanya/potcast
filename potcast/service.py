@@ -264,6 +264,15 @@ class StationService:
                     error=state.playback_supervisor_error,
                 ),
             )
+            self._save_state(state)
+            return self._result(
+                state,
+                downloads,
+                error=CommandError(
+                    code="output_recovery_failed",
+                    message=f"Output recovery failed: {state.playback_supervisor_error.message}",
+                ),
+            )
         self._save_state(state)
         return self._result(state, downloads)
 
@@ -408,8 +417,9 @@ class StationService:
 
     def _playback_supervisor_status(self, state: RuntimeState) -> PlaybackSupervisorStatus:
         if state.playback_supervisor_error is not None:
+            supervisor_state = self._blocked_supervisor_state()
             return PlaybackSupervisorStatus(
-                state="blocked",
+                state=supervisor_state,
                 last_error=state.playback_supervisor_error,
                 next_retry_at=self._retry_state.next_retry_at,
                 retry_attempts=self._retry_state.attempts,
@@ -426,6 +436,13 @@ class StationService:
             retry_attempts=self._retry_state.attempts,
             max_retry_attempts=self.retry_policy.max_attempts,
         )
+
+    def _blocked_supervisor_state(self) -> str:
+        if self._retry_state.next_retry_at is not None:
+            return "retry_scheduled"
+        if self._retry_state.attempts >= self.retry_policy.max_attempts:
+            return "exhausted"
+        return "blocked"
 
     def _retry_output_if_due(
         self,

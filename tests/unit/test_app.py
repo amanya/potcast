@@ -197,6 +197,7 @@ def test_status_serializes_playback_retry_window() -> None:
     service.status_override = _status(
         volume=70,
         output_error_code="backend_process_failed",
+        playback_supervisor_state="retry_scheduled",
         next_retry_at=datetime(2026, 6, 9, 12, 0, 5, tzinfo=timezone.utc),
         retry_attempts=0,
         max_retry_attempts=1,
@@ -206,6 +207,7 @@ def test_status_serializes_playback_retry_window() -> None:
 
     payload = response.get_json()
     assert response.status_code == 200
+    assert payload["status"]["playback_supervisor"]["state"] == "retry_scheduled"
     assert payload["status"]["playback_supervisor"]["next_retry_at"] == (
         "2026-06-09T12:00:05+00:00"
     )
@@ -252,6 +254,26 @@ def test_station_command_routes_call_station_service() -> None:
         assert payload["ok"] is True
         assert payload["command"] == expected_command
         assert service.calls[-1] == expected_call
+
+
+def test_output_recover_failure_returns_structured_503() -> None:
+    client, service = client_and_service()
+    service.errors["recover_output"] = CommandError(
+        code="output_recovery_failed",
+        message="Output recovery failed: ffmpeg missing",
+    )
+
+    response = client.get("/output/recover")
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "ok": False,
+        "error": {
+            "code": "output_recovery_failed",
+            "message": "Output recovery failed: ffmpeg missing",
+        },
+    }
+    assert service.calls == [("recover_output", None)]
 
 
 def test_channel_select_route_calls_station_service() -> None:
@@ -441,6 +463,7 @@ def _status(
     *,
     volume: int,
     output_error_code: str | None = None,
+    playback_supervisor_state: str | None = None,
     next_retry_at: datetime | None = None,
     retry_attempts: int = 0,
     max_retry_attempts: int = 0,
@@ -481,7 +504,10 @@ def _status(
             ),
         ),
         playback_supervisor=PlaybackSupervisorStatus(
-            state="blocked" if output_error_code is not None else "watching",
+            state=(
+                playback_supervisor_state
+                or ("blocked" if output_error_code is not None else "watching")
+            ),
             last_error=(
                 OutputError(
                     code=output_error_code,

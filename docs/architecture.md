@@ -97,16 +97,18 @@ station moves to `idle`.
 Backend startup failures and unexpected process exits are output errors, not completion
 events. The backend reports structured errors in `OutputStatus.error`; the station moves
 to `idle`, persists that structured error in runtime state, and the supervisor does not
-immediately relaunch the same episode. `/status` reports this as
-`playback_supervisor.state: "blocked"` with `last_error` set, so the last stop reason is
-still visible after the output backend object has been recreated. This keeps crashing
-`ffmpeg` or `mpv` processes from causing a tight retry loop. The supervisor also keeps a
-small in-memory retry policy: by default it schedules one automatic retry after a short
-delay, exposes the due time and attempt counters in `/status`, and then remains blocked
-if the retry fails. The operator-facing recovery path is
+immediately relaunch the same episode. `/status` reports `last_error` with
+`playback_supervisor.state: "retry_scheduled"` while an automatic retry is waiting,
+`"exhausted"` after the bounded retry policy has no attempts left, and `"blocked"` when
+only the persisted error remains, such as after the output backend object has been
+recreated. This keeps crashing `ffmpeg` or `mpv` processes from causing a tight retry
+loop. The supervisor also keeps a small in-memory retry policy: by default it schedules
+one automatic retry after a short delay and exposes the due time and attempt counters in
+`/status`. The operator-facing recovery path is
 `StationService.recover_output()`, exposed as `GET /output/recover`, which retries the
 current selected episode when either the backend is in `error` or persisted supervisor
-state is blocked.
+state is blocked. If that manual retry reaches the backend and playback fails again, the
+service returns a structured `output_recovery_failed` command error.
 
 `StationService` emits structured log records around the same recovery lifecycle:
 failure, scheduled retry, retry attempt, retry success, retry exhaustion, and manual
@@ -121,6 +123,7 @@ codes:
 - `unknown_channel` and `unknown_podcast`: `404`
 - `invalid_volume`: `400`
 - `podcast_unavailable`: `409`
+- `output_recovery_failed`: `503`
 - other command failures: `500`
 
 The implemented API includes health, status, station commands, output recovery, channel

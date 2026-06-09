@@ -11,11 +11,11 @@ also watches the active output process and advances to the next playable podcast
 episode finishes normally. Backend startup failures and unexpected output process exits
 are surfaced in `/status` as structured output and playback supervisor errors, and the
 station is left idle instead of immediately relaunching the same failing episode. The
-supervisor schedules one delayed automatic retry and exposes the retry window in
-`/status`. Operators can use `GET /output/recover` to clear an output error and retry
-the currently selected episode immediately. Potcast logs output failure, scheduled
-retry, retry attempt, retry success, retry exhaustion, and manual recovery events with
-structured fields for log collectors.
+supervisor schedules one delayed automatic retry and exposes whether recovery is
+scheduled, exhausted, or blocked for manual action in `/status`. Operators can use
+`GET /output/recover` to clear an output error and retry the currently selected episode
+immediately. Potcast logs output failure, scheduled retry, retry attempt, retry success,
+retry exhaustion, and manual recovery events with structured fields for log collectors.
 
 ## Quick Start
 

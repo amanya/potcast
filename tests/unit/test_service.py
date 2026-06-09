@@ -233,7 +233,7 @@ def test_startup_failure_surfaces_output_error_and_does_not_mark_station_playing
     assert store.state.station_status == "idle"
     assert store.state.playback_supervisor_error is not None
     assert store.state.playback_supervisor_error.code == "backend_start_failed"
-    assert result.status.playback_supervisor.state == "blocked"
+    assert result.status.playback_supervisor.state == "retry_scheduled"
     assert result.status.playback_supervisor.last_error is not None
     assert result.status.playback_supervisor.last_error.code == "backend_start_failed"
     assert result.status.output.state == "error"
@@ -264,7 +264,7 @@ def test_unexpected_process_exit_surfaces_output_error_without_advancing() -> No
     assert store.state.current_podcast_id == "history-extra"
     assert store.state.playback_supervisor_error is not None
     assert store.state.playback_supervisor_error.code == "backend_process_failed"
-    assert result.status.playback_supervisor.state == "blocked"
+    assert result.status.playback_supervisor.state == "retry_scheduled"
     assert result.status.output.state == "error"
     assert result.status.output.error is not None
     assert result.status.output.error.code == "backend_process_failed"
@@ -294,7 +294,7 @@ def test_output_failure_schedules_bounded_retry_without_immediate_relaunch() -> 
     failed = service.advance_if_finished()
     not_due = service.advance_if_finished()
 
-    assert failed.status.playback_supervisor.state == "blocked"
+    assert failed.status.playback_supervisor.state == "retry_scheduled"
     assert failed.status.playback_supervisor.next_retry_at == datetime(
         2026, 6, 9, 12, 0, 5, tzinfo=timezone.utc
     )
@@ -442,7 +442,7 @@ def test_output_retry_is_not_rescheduled_after_policy_attempts_are_exhausted() -
     first_retry = service.advance_if_finished()
     second_tick = service.advance_if_finished()
 
-    assert first_retry.status.playback_supervisor.state == "blocked"
+    assert first_retry.status.playback_supervisor.state == "exhausted"
     assert first_retry.status.playback_supervisor.next_retry_at is None
     assert first_retry.status.playback_supervisor.retry_attempts == 1
     assert second_tick.status.playback_supervisor.retry_attempts == 1
@@ -490,6 +490,52 @@ def test_output_retry_exhaustion_is_logged(caplog) -> None:  # type: ignore[no-u
     assert exhausted.error_code == "backend_start_failed"
     assert exhausted.retry_attempts == 1
     assert exhausted.max_retry_attempts == 1
+
+
+def test_persisted_supervisor_error_without_retry_window_reports_blocked() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="idle",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+            playback_supervisor_error=output_error(),
+        ),
+        downloads=downloads("history-extra"),
+    )
+    service, _output = make_service(store)
+
+    status = service.status()
+
+    assert status.playback_supervisor.state == "blocked"
+    assert status.playback_supervisor.last_error is not None
+    assert status.playback_supervisor.last_error.code == "backend_process_failed"
+
+
+def test_supervisor_reports_exhausted_when_retry_policy_has_no_attempts() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra"),
+    )
+    service, output = make_service(
+        store,
+        retry_policy=OutputRetryPolicy(max_attempts=0),
+    )
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+
+    result = service.advance_if_finished()
+
+    assert result.status.playback_supervisor.state == "exhausted"
+    assert result.status.playback_supervisor.next_retry_at is None
+    assert result.status.playback_supervisor.retry_attempts == 0
+    assert result.status.playback_supervisor.max_retry_attempts == 0
 
 
 def test_failing_episode_is_not_relaunched_by_repeated_supervisor_ticks() -> None:
@@ -568,6 +614,41 @@ def test_recover_output_logs_manual_recovery(caplog) -> None:  # type: ignore[no
     assert recovering.podcast_id == "history-extra"
     assert recovered.station_state == "playing"
     assert recovered.episode_identity == "history-extra-episode"
+
+
+def test_recover_output_returns_structured_error_when_retry_fails() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="idle",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+            playback_supervisor_error=output_error(),
+        ),
+        downloads=downloads("history-extra"),
+    )
+    output = FakeOutputBackend(volume=70)
+    service, output = make_service(store, output)
+
+    def fail_playback(episode: Episode) -> None:
+        output.calls.append(("play_episode", episode.identity))
+        output.fail("backend_start_failed", "ffmpeg missing")
+
+    output.play_episode = fail_playback  # type: ignore[method-assign]
+
+    result = service.recover_output()
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "output_recovery_failed"
+    assert result.error.message == "Output recovery failed: ffmpeg missing"
+    assert store.state.playback_supervisor_error is not None
+    assert store.state.playback_supervisor_error.code == "backend_start_failed"
+    assert result.status.playback_supervisor.state == "retry_scheduled"
+    assert output.calls == [
+        ("stop", None),
+        ("play_episode", "history-extra-episode"),
+    ]
 
 
 def test_recover_output_retries_persisted_supervisor_error_after_backend_restart() -> None:
