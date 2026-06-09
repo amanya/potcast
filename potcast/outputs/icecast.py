@@ -1,0 +1,1 @@
+"""Icecast output backend placeholder."""

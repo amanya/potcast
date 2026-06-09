@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "potcast"
+version = "0.1.0"
+description = "Personal podcast radio service"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "Flask>=3.0",
+  "PyYAML>=6.0",
+  "feedparser>=6.0",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy==1.10.1",
+  "pytest==8.2.2",
+  "ruff==0.5.7",
+  "types-PyYAML==6.0.12.20250516",
+]
+
+[project.scripts]
+potcast = "potcast.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["potcast*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+packages = ["potcast"]
