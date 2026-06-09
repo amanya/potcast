@@ -109,6 +109,16 @@ channels:
     assert config.channels[0].id == "sleep"
 
 
+def test_example_config_loads() -> None:
+    config_path = Path(__file__).resolve().parents[2] / "examples" / "potcast.yaml"
+
+    config = load_config(config_path)
+
+    assert config.outputs.primary == "icecast"
+    assert config.storage.data_dir == Path("/data")
+    assert [channel.id for channel in config.channels] == ["sleep", "stories"]
+
+
 def test_duplicate_channel_ids_fail() -> None:
     raw = minimal_config()
     raw["channels"] = [

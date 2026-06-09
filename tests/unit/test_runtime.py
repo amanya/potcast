@@ -4,6 +4,9 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
+
+from flask import Flask
 
 from potcast.models import DownloadMetadata
 from potcast.runtime import build_output_backend, build_runtime
@@ -56,6 +59,33 @@ def test_runtime_status_works_before_real_feed_refresh(tmp_path: Path) -> None:
     assert payload["ok"] is True
     assert payload["status"]["volume"] == 42
     assert payload["feed_monitor"]["next_refresh_at"] is not None
+
+
+def test_runtime_run_smoke_with_example_config_and_injected_runner(tmp_path: Path) -> None:
+    background_tasks: list[Callable[[], None]] = []
+    config_path = write_example_config(tmp_path)
+    runtime = build_runtime(config_path, background_starter=background_tasks.append)
+    observed: dict[str, Any] = {}
+
+    def runner(app: Flask, *, host: str, port: int) -> None:
+        client = app.test_client()
+        health = client.get("/health")
+        status = client.get("/status")
+        observed["host"] = host
+        observed["port"] = port
+        observed["health"] = health.get_json()
+        observed["status"] = status.get_json()
+        assert health.status_code == 200
+        assert status.status_code == 200
+
+    runtime.run(runner)
+
+    assert observed["host"] == "127.0.0.1"
+    assert observed["port"] == 8089
+    assert observed["health"]["ok"] is True
+    assert observed["status"]["ok"] is True
+    assert observed["status"]["status"]["volume"] == 70
+    assert background_tasks
 
 
 def test_build_runtime_preserves_existing_runtime_state(tmp_path: Path) -> None:
@@ -163,6 +193,21 @@ def write_config(
         + "\n",
         encoding="utf-8",
     )
+    return config_path
+
+
+def write_example_config(tmp_path: Path) -> Path:
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / "examples" / "potcast.yaml").read_text(encoding="utf-8")
+    text = text.replace('host: "0.0.0.0"', 'host: "127.0.0.1"', 1)
+    text = text.replace("port: 8080", "port: 8089", 1)
+    text = text.replace('data_dir: "/data"', f'data_dir: "{(tmp_path / "data").as_posix()}"')
+    text = text.replace(
+        'episodes_dir: "/data/episodes"',
+        f'episodes_dir: "{(tmp_path / "data" / "episodes").as_posix()}"',
+    )
+    config_path = tmp_path / "example-potcast.yaml"
+    config_path.write_text(text, encoding="utf-8")
     return config_path
 
 
