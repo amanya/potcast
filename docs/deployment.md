@@ -165,6 +165,10 @@ also reports `playback_supervisor.state: "blocked"` with the same structured
 supervisor tick and keeps the last stop reason visible after a restart. The runtime
 schedules one automatic retry after a short delay and exposes `next_retry_at`,
 `retry_attempts`, and `max_retry_attempts` under `playback_supervisor` in `/status`.
+The same recovery path writes structured log records for the failure, scheduled retry,
+retry attempt, retry success, retry exhaustion, and manual recovery actions. Default CLI
+logging prints readable messages; collectors can use record fields such as `error_code`,
+`podcast_id`, `episode_identity`, `retry_attempt`, and `next_retry_at`.
 After fixing the operator-visible cause, such as a missing command or unreachable output
 target, call `GET /output/recover` to clear the backend or persisted supervisor error and
 retry the currently selected episode immediately.

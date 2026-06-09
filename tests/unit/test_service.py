@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -305,6 +306,40 @@ def test_output_failure_schedules_bounded_retry_without_immediate_relaunch() -> 
     assert output.calls == []
 
 
+def test_output_failure_logs_block_and_scheduled_retry(caplog) -> None:  # type: ignore[no-untyped-def]
+    clock = MutableClock(datetime(2026, 6, 9, 12, tzinfo=timezone.utc))
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra"),
+    )
+    service, output = make_service(
+        store,
+        retry_policy=OutputRetryPolicy(max_attempts=1, initial_delay=timedelta(seconds=5)),
+        clock=clock,
+    )
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+
+    with caplog.at_level(logging.INFO, logger="potcast.service"):
+        service.advance_if_finished()
+
+    scheduled = _log_record(caplog.records, "Scheduled output playback retry")
+    blocked = _log_record(caplog.records, "Output playback failed; station blocked")
+    assert scheduled.error_code == "backend_process_failed"
+    assert scheduled.next_retry_at == "2026-06-09T12:00:05+00:00"
+    assert scheduled.retry_attempt == 1
+    assert blocked.error_code == "backend_process_failed"
+    assert blocked.station_state == "idle"
+    assert blocked.podcast_id == "history-extra"
+    assert blocked.episode_identity == "history-extra-episode"
+
+
 def test_output_retry_runs_once_when_due() -> None:
     clock = MutableClock(datetime(2026, 6, 9, 12, tzinfo=timezone.utc))
     store = MemoryStateStore(
@@ -338,6 +373,40 @@ def test_output_retry_runs_once_when_due() -> None:
         ("stop", None),
         ("play_episode", "history-extra-episode"),
     ]
+
+
+def test_output_retry_logs_attempt_and_success(caplog) -> None:  # type: ignore[no-untyped-def]
+    clock = MutableClock(datetime(2026, 6, 9, 12, tzinfo=timezone.utc))
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra"),
+    )
+    service, output = make_service(
+        store,
+        retry_policy=OutputRetryPolicy(max_attempts=1, initial_delay=timedelta(seconds=5)),
+        clock=clock,
+    )
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+    service.advance_if_finished()
+    clock.advance(timedelta(seconds=5))
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO, logger="potcast.service"):
+        service.advance_if_finished()
+
+    attempt = _log_record(caplog.records, "Retrying output playback")
+    success = _log_record(caplog.records, "Output playback retry succeeded")
+    assert attempt.retry_attempt == 1
+    assert attempt.error_code == "backend_process_failed"
+    assert success.retry_attempt == 1
+    assert success.station_state == "playing"
 
 
 def test_output_retry_is_not_rescheduled_after_policy_attempts_are_exhausted() -> None:
@@ -381,6 +450,46 @@ def test_output_retry_is_not_rescheduled_after_policy_attempts_are_exhausted() -
         ("stop", None),
         ("play_episode", "history-extra-episode"),
     ]
+
+
+def test_output_retry_exhaustion_is_logged(caplog) -> None:  # type: ignore[no-untyped-def]
+    clock = MutableClock(datetime(2026, 6, 9, 12, tzinfo=timezone.utc))
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra"),
+    )
+    output = FakeOutputBackend(volume=70)
+    service, output = make_service(
+        store,
+        output,
+        retry_policy=OutputRetryPolicy(max_attempts=1, initial_delay=timedelta(seconds=5)),
+        clock=clock,
+    )
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+    service.advance_if_finished()
+
+    def fail_playback(episode: Episode) -> None:
+        output.calls.append(("play_episode", episode.identity))
+        output.fail("backend_start_failed", "ffmpeg missing")
+
+    output.play_episode = fail_playback  # type: ignore[method-assign]
+    clock.advance(timedelta(seconds=5))
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO, logger="potcast.service"):
+        service.advance_if_finished()
+
+    exhausted = _log_record(caplog.records, "Output playback retry policy exhausted")
+    assert exhausted.error_code == "backend_start_failed"
+    assert exhausted.retry_attempts == 1
+    assert exhausted.max_retry_attempts == 1
 
 
 def test_failing_episode_is_not_relaunched_by_repeated_supervisor_ticks() -> None:
@@ -435,6 +544,30 @@ def test_recover_output_retries_selected_episode_after_output_error() -> None:
         ("stop", None),
         ("play_episode", "history-extra-episode"),
     ]
+
+
+def test_recover_output_logs_manual_recovery(caplog) -> None:  # type: ignore[no-untyped-def]
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="idle",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra"),
+    )
+    service, output = make_service(store)
+    output.fail("backend_process_failed", "Output process exited unexpectedly with code 1.")
+    output.calls.clear()
+
+    with caplog.at_level(logging.INFO, logger="potcast.service"):
+        service.recover_output()
+
+    recovering = _log_record(caplog.records, "Manually recovering output playback")
+    recovered = _log_record(caplog.records, "Manual output recovery succeeded")
+    assert recovering.podcast_id == "history-extra"
+    assert recovered.station_state == "playing"
+    assert recovered.episode_identity == "history-extra-episode"
 
 
 def test_recover_output_retries_persisted_supervisor_error_after_backend_restart() -> None:
@@ -684,6 +817,13 @@ def output_error() -> OutputError:
         code="backend_process_failed",
         message="Output process exited unexpectedly with code 1.",
     )
+
+
+def _log_record(records: list[logging.LogRecord], message: str) -> logging.LogRecord:
+    for record in records:
+        if record.getMessage() == message:
+            return record
+    raise AssertionError(f"Log record not found: {message}")
 
 
 class MutableClock:

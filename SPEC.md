@@ -526,7 +526,10 @@ station also persists the same structured error in `state.json` and reports
 playback attempt or explicit station stop clears it. This makes the last supervisor stop
 reason visible even if the backend object has been recreated. When an automatic retry is
 scheduled, `playback_supervisor.next_retry_at` shows the due time and retry counters show
-how many automatic attempts have been made out of the bounded policy.
+how many automatic attempts have been made out of the bounded policy. The station
+service also logs output failure, scheduled retry, retry attempt, retry success, retry
+exhaustion, and manual recovery events with structured fields such as `error_code`,
+`podcast_id`, `episode_identity`, `retry_attempt`, and `next_retry_at`.
 
 ### 9.2 Station Commands
 
@@ -729,6 +732,7 @@ Potcast should log:
 - Output connection status.
 - Stream encoder failures.
 - Local audio player failures.
+- Output retry scheduling, attempts, success, exhaustion, and manual recovery.
 - HTTP command errors.
 
 Logs should be written to stdout/stderr so Docker can capture them.

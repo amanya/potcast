@@ -108,6 +108,11 @@ if the retry fails. The operator-facing recovery path is
 current selected episode when either the backend is in `error` or persisted supervisor
 state is blocked.
 
+`StationService` emits structured log records around the same recovery lifecycle:
+failure, scheduled retry, retry attempt, retry success, retry exhaustion, and manual
+recovery. The Flask routes do not build those messages; they stay thin and return the
+serialized command result or status.
+
 ## HTTP API
 
 `potcast/app.py` serializes dataclasses into JSON and maps command errors to HTTP status
