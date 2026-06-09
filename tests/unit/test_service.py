@@ -7,6 +7,7 @@ from potcast.models import (
     ChannelConfig,
     DownloadMetadata,
     Episode,
+    OutputError,
     PodcastConfig,
     RuntimeState,
     StationConfig,
@@ -142,6 +143,28 @@ def test_stop_is_idempotent() -> None:
     assert output.calls == [("stop", None)]
 
 
+def test_stop_clears_persisted_supervisor_error() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="stopped",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+            playback_supervisor_error=output_error(),
+        ),
+        downloads=downloads("history-extra"),
+    )
+    service, output = make_service(store)
+
+    result = service.stop()
+
+    assert result.ok is True
+    assert store.state.station_status == "stopped"
+    assert store.state.playback_supervisor_error is None
+    assert result.status.playback_supervisor.state == "idle"
+    assert output.calls == []
+
+
 def test_next_changes_podcast_and_calls_output_backend() -> None:
     store = MemoryStateStore(
         state=RuntimeState(
@@ -201,6 +224,11 @@ def test_startup_failure_surfaces_output_error_and_does_not_mark_station_playing
 
     assert result.ok is True
     assert store.state.station_status == "idle"
+    assert store.state.playback_supervisor_error is not None
+    assert store.state.playback_supervisor_error.code == "backend_start_failed"
+    assert result.status.playback_supervisor.state == "blocked"
+    assert result.status.playback_supervisor.last_error is not None
+    assert result.status.playback_supervisor.last_error.code == "backend_start_failed"
     assert result.status.output.state == "error"
     assert result.status.output.error is not None
     assert result.status.output.error.code == "backend_start_failed"
@@ -227,6 +255,9 @@ def test_unexpected_process_exit_surfaces_output_error_without_advancing() -> No
     assert result.ok is True
     assert store.state.station_status == "idle"
     assert store.state.current_podcast_id == "history-extra"
+    assert store.state.playback_supervisor_error is not None
+    assert store.state.playback_supervisor_error.code == "backend_process_failed"
+    assert result.status.playback_supervisor.state == "blocked"
     assert result.status.output.state == "error"
     assert result.status.output.error is not None
     assert result.status.output.error.code == "backend_process_failed"
@@ -277,8 +308,35 @@ def test_recover_output_retries_selected_episode_after_output_error() -> None:
     assert result.ok is True
     assert store.state.station_status == "playing"
     assert store.state.current_podcast_id == "history-extra"
+    assert store.state.playback_supervisor_error is None
+    assert result.status.playback_supervisor.state == "watching"
     assert result.status.output.state == "playing"
     assert result.status.output.error is None
+    assert output.calls == [
+        ("stop", None),
+        ("play_episode", "history-extra-episode"),
+    ]
+
+
+def test_recover_output_retries_persisted_supervisor_error_after_backend_restart() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="idle",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+            playback_supervisor_error=output_error(),
+        ),
+        downloads=downloads("history-extra"),
+    )
+    service, output = make_service(store)
+
+    result = service.recover_output()
+
+    assert result.ok is True
+    assert store.state.station_status == "playing"
+    assert store.state.playback_supervisor_error is None
+    assert result.status.playback_supervisor.state == "watching"
     assert output.calls == [
         ("stop", None),
         ("play_episode", "history-extra-episode"),
@@ -486,6 +544,8 @@ def test_status_includes_active_station_and_output_fields() -> None:
     assert status.active_episode.identity == "history-extra-episode"
     assert status.volume == 70
     assert status.output.current_episode_identity == "history-extra-episode"
+    assert status.playback_supervisor.state == "watching"
+    assert status.playback_supervisor.last_error is None
 
 
 def _episode_identity_only(identity: str) -> Episode:
@@ -497,4 +557,11 @@ def _episode_identity_only(identity: str) -> Episode:
         media_url=f"https://example.com/{identity}.mp3",
         media_type="audio/mpeg",
         local_file=Path(f"/data/{identity}.mp3"),
+    )
+
+
+def output_error() -> OutputError:
+    return OutputError(
+        code="backend_process_failed",
+        message="Output process exited unexpectedly with code 1.",
     )

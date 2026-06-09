@@ -3,7 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from potcast.models import DownloadMetadata, Episode, FeedMetadata, RuntimeState, StorageConfig
+from potcast.models import (
+    DownloadMetadata,
+    Episode,
+    FeedMetadata,
+    OutputError,
+    RuntimeState,
+    StorageConfig,
+)
 from potcast.state import JsonStateStore, ensure_data_directories
 
 
@@ -38,6 +45,10 @@ def test_runtime_state_round_trip_through_temporary_directory(tmp_path: Path) ->
         current_podcast_id="history-extra",
         volume=70,
         previous_podcast_ids=("science-hour",),
+        playback_supervisor_error=OutputError(
+            code="backend_process_failed",
+            message="Output process exited unexpectedly with code 1.",
+        ),
     )
 
     store.save_runtime_state(state)

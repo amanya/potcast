@@ -110,6 +110,7 @@ class RuntimeState:
     current_podcast_id: str | None = None
     volume: int = 100
     previous_podcast_ids: tuple[str, ...] = ()
+    playback_supervisor_error: OutputError | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,12 @@ class OutputError:
 
 
 @dataclass(frozen=True)
+class PlaybackSupervisorStatus:
+    state: str
+    last_error: OutputError | None = None
+
+
+@dataclass(frozen=True)
 class OutputStatus:
     backend: str
     state: str = "stopped"
@@ -200,6 +207,7 @@ class StationStatus:
     active_episode: Episode | None
     volume: int
     output: OutputStatus
+    playback_supervisor: PlaybackSupervisorStatus
 
 
 @dataclass(frozen=True)

@@ -131,8 +131,8 @@ name that works on the host, then copy that value into `outputs.local_audio.devi
 
 Potcast writes runtime metadata under `storage.data_dir`:
 
-- `state.json`: station status, active channel, active podcast, volume, and previous
-  podcast history.
+- `state.json`: station status, active channel, active podcast, volume, previous podcast
+  history, and the last playback supervisor output error when playback is blocked.
 - `feeds.json`: feed URL, feed title, latest episode metadata, entry counts, last check
   time, status, and structured feed errors.
 - `downloads.json`: downloaded episode identity, media URL and type, local file path,
@@ -159,11 +159,13 @@ auto-advance.
 
 If the backend cannot start, `/status` reports `output.state: "error"` with
 `backend_start_failed`. If the process exits unexpectedly with a non-zero code, `/status`
-reports `backend_process_failed`. In both cases the station is left idle so the runtime
-does not repeatedly relaunch the same failing episode every supervisor tick. After
-fixing the operator-visible cause, such as a missing command or unreachable output
-target, call `GET /output/recover` to clear the backend error and retry the currently
-selected episode once.
+reports `backend_process_failed`. In both cases the station is left idle, and `/status`
+also reports `playback_supervisor.state: "blocked"` with the same structured
+`last_error` persisted in `state.json`. This prevents repeated relaunches every
+supervisor tick and keeps the last stop reason visible after a restart. After fixing the
+operator-visible cause, such as a missing command or unreachable output target, call
+`GET /output/recover` to clear the backend or persisted supervisor error and retry the
+currently selected episode once.
 
 Implemented command endpoints:
 

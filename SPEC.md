@@ -176,7 +176,7 @@ The YAML file remains the source of truth for user intent. Runtime metadata can 
 
 Phase 3 persists these files as UTF-8 JSON objects in `storage.data_dir`:
 
-- `state.json`: `station_status`, `current_channel_id`, `current_podcast_id`, `volume`, and `previous_podcast_ids`.
+- `state.json`: `station_status`, `current_channel_id`, `current_podcast_id`, `volume`, `previous_podcast_ids`, and optional `playback_supervisor_error`.
 - `feeds.json`: keyed by podcast ID, with feed URL, feed title, latest episode metadata, entry counts, last check timestamp, status, and optional structured error fields.
 - `downloads.json`: keyed by podcast ID, with episode identity, media URL/type, local file path, download timestamp, status, and title.
 
@@ -200,6 +200,8 @@ a status object containing:
 - `active_episode`: the downloaded episode currently selected for playback, when any.
 - `volume`: persisted station volume from 0 to 100.
 - `output`: the current output backend status.
+- `playback_supervisor`: lightweight supervisor state with `state` and optional
+  structured `last_error`.
 
 Phase 8 adds an in-memory feed monitor status used by `/status`, `/feeds`, and
 `/feeds/refresh`:
@@ -503,6 +505,10 @@ also includes top-level `feed_monitor` timing and status fields.
       "current_episode_identity": "episode-guid",
       "volume": 70,
       "error": null
+    },
+    "playback_supervisor": {
+      "state": "watching",
+      "last_error": null
     }
   }
 }
@@ -510,7 +516,11 @@ also includes top-level `feed_monitor` timing and status fields.
 
 When output playback fails, `output.state` is `error`, `connected` is `false`, and
 `output.error` contains a structured code and message. Startup failures use
-`backend_start_failed`; unexpected subprocess exits use `backend_process_failed`.
+`backend_start_failed`; unexpected subprocess exits use `backend_process_failed`. The
+station also persists the same structured error in `state.json` and reports
+`playback_supervisor.state` as `blocked` with `last_error` set until a later successful
+playback attempt or explicit station stop clears it. This makes the last supervisor stop
+reason visible even if the backend object has been recreated.
 
 ### 9.2 Station Commands
 
@@ -558,9 +568,9 @@ updates runtime state and sends that episode to the output backend.
 `GET /output/recover`
 
 Clears an output backend error and retries the currently selected episode once. If the
-output backend is not in `error`, the command is idempotent and returns the current
-status without replaying the episode. If no selected podcast has a playable downloaded
-episode, the station remains `idle`.
+output backend is not in `error` and no persisted playback supervisor error is blocked,
+the command is idempotent and returns the current status without replaying the episode.
+If no selected podcast has a playable downloaded episode, the station remains `idle`.
 
 ### 9.4 Channel Commands
 

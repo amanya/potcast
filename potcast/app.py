@@ -22,6 +22,7 @@ from potcast.models import (
     FeedRefreshTriggerResult,
     OutputError,
     OutputStatus,
+    PlaybackSupervisorStatus,
     PodcastConfig,
     StationCommandResult,
     StationStatus,
@@ -291,6 +292,7 @@ def _status_to_json(status: StationStatus) -> dict[str, Any]:
         "active_episode": _episode_to_json(status.active_episode),
         "volume": status.volume,
         "output": _output_status_to_json(status.output),
+        "playback_supervisor": _playback_supervisor_to_json(status.playback_supervisor),
     }
 
 
@@ -386,6 +388,13 @@ def _output_error_to_json(error: OutputError | None) -> dict[str, str] | None:
     return {
         "code": error.code,
         "message": error.message,
+    }
+
+
+def _playback_supervisor_to_json(status: PlaybackSupervisorStatus) -> dict[str, Any]:
+    return {
+        "state": status.state,
+        "last_error": _output_error_to_json(status.last_error),
     }
 
 

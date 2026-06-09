@@ -16,6 +16,7 @@ from potcast.models import (
     FeedRefreshTriggerResult,
     OutputError,
     OutputStatus,
+    PlaybackSupervisorStatus,
     PodcastConfig,
     StationCommandResult,
     StationStatus,
@@ -178,6 +179,13 @@ def test_status_serializes_structured_output_error() -> None:
     assert payload["status"]["output"]["error"] == {
         "code": "backend_process_failed",
         "message": "Output process exited unexpectedly with code 1.",
+    }
+    assert payload["status"]["playback_supervisor"] == {
+        "state": "blocked",
+        "last_error": {
+            "code": "backend_process_failed",
+            "message": "Output process exited unexpectedly with code 1.",
+        },
     }
 
 
@@ -433,6 +441,17 @@ def _status(*, volume: int, output_error_code: str | None = None) -> StationStat
             current_episode_identity="episode-1",
             volume=volume,
             error=(
+                OutputError(
+                    code=output_error_code,
+                    message="Output process exited unexpectedly with code 1.",
+                )
+                if output_error_code is not None
+                else None
+            ),
+        ),
+        playback_supervisor=PlaybackSupervisorStatus(
+            state="blocked" if output_error_code is not None else "watching",
+            last_error=(
                 OutputError(
                     code=output_error_code,
                     message="Output process exited unexpectedly with code 1.",

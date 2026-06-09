@@ -9,10 +9,10 @@ episode files up to date; station commands select the active channel or podcast 
 the selected local episode to the output backend. While the station is playing, Potcast
 also watches the active output process and advances to the next playable podcast when an
 episode finishes normally. Backend startup failures and unexpected output process exits
-are surfaced in `/status` as structured output errors, and the station is left idle
-instead of immediately relaunching the same failing episode. Operators can use
-`GET /output/recover` to clear an output error and retry the currently selected episode
-once.
+are surfaced in `/status` as structured output and playback supervisor errors, and the
+station is left idle instead of immediately relaunching the same failing episode.
+Operators can use `GET /output/recover` to clear an output error and retry the currently
+selected episode once.
 
 ## Quick Start
 

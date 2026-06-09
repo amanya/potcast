@@ -11,6 +11,9 @@ from potcast.models import (
     CommandError,
     DownloadMetadata,
     Episode,
+    OutputError,
+    OutputPlaybackEvent,
+    PlaybackSupervisorStatus,
     PodcastConfig,
     RuntimeState,
     StationCommandResult,
@@ -81,7 +84,12 @@ class StationService:
         downloads = self.state_store.load_download_metadata()
         if state.station_status != "stopped":
             self.output.stop()
-            state = replace(state, station_status="stopped")
+        if state.station_status != "stopped" or state.playback_supervisor_error is not None:
+            state = replace(
+                state,
+                station_status="stopped",
+                playback_supervisor_error=None,
+            )
         self._save_state(state)
         return self._result(state, downloads)
 
@@ -196,7 +204,7 @@ class StationService:
 
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
-        if self.output.status().state != "error":
+        if self.output.status().state != "error" and state.playback_supervisor_error is None:
             return self._result(state, downloads)
 
         self.output.stop()
@@ -215,7 +223,11 @@ class StationService:
         if event is None:
             return self._result(state, downloads)
         if event.outcome != "completed":
-            state = replace(state, station_status="idle")
+            state = replace(
+                state,
+                station_status="idle",
+                playback_supervisor_error=self._event_error(event),
+            )
             self._save_state(state)
             return self._result(state, downloads)
 
@@ -263,12 +275,21 @@ class StationService:
         episode = self._active_episode(state, downloads)
         if episode is None:
             self.output.stop()
-            return replace(state, station_status="idle")
+            return replace(
+                state,
+                station_status="idle",
+                playback_supervisor_error=None,
+            )
 
         self.output.play_episode(episode)
-        if self.output.status().state == "error":
-            return replace(state, station_status="idle")
-        return replace(state, station_status="playing")
+        output_status = self.output.status()
+        if output_status.state == "error":
+            return replace(
+                state,
+                station_status="idle",
+                playback_supervisor_error=self._output_status_error(),
+            )
+        return replace(state, station_status="playing", playback_supervisor_error=None)
 
     def _is_playing_selected(
         self,
@@ -309,6 +330,38 @@ class StationService:
             active_episode=self._active_episode(state, downloads),
             volume=state.volume,
             output=self.output.status(),
+            playback_supervisor=self._playback_supervisor_status(state),
+        )
+
+    def _playback_supervisor_status(self, state: RuntimeState) -> PlaybackSupervisorStatus:
+        if state.playback_supervisor_error is not None:
+            return PlaybackSupervisorStatus(
+                state="blocked",
+                last_error=state.playback_supervisor_error,
+            )
+        if state.station_status == "playing":
+            return PlaybackSupervisorStatus(state="watching")
+        return PlaybackSupervisorStatus(state="idle")
+
+    def _event_error(self, event: OutputPlaybackEvent) -> OutputError:
+        error = event.error
+        if error is not None:
+            return error
+        status_error = self.output.status().error
+        if status_error is not None:
+            return status_error
+        return OutputError(
+            code="backend_process_failed",
+            message="Output playback failed without a structured backend error.",
+        )
+
+    def _output_status_error(self) -> OutputError:
+        error = self.output.status().error
+        if error is not None:
+            return error
+        return OutputError(
+            code="backend_process_failed",
+            message="Output backend entered error state without a structured error.",
         )
 
     def _active_channel(self, state: RuntimeState) -> ChannelConfig | None:

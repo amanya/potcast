@@ -53,7 +53,8 @@ construction without starting `ffmpeg` or `mpv`.
 
 Runtime metadata is stored as UTF-8 JSON under `storage.data_dir`:
 
-- `state.json`: station status, active channel, active podcast, volume, previous history.
+- `state.json`: station status, active channel, active podcast, volume, previous history,
+  and the last playback supervisor output error when one has blocked auto-advance.
 - `feeds.json`: feed status and latest episode metadata.
 - `downloads.json`: local media file and episode identity per podcast.
 
@@ -95,11 +96,14 @@ station moves to `idle`.
 
 Backend startup failures and unexpected process exits are output errors, not completion
 events. The backend reports structured errors in `OutputStatus.error`; the station moves
-to `idle` and the supervisor does not immediately relaunch the same episode. This keeps
-crashing `ffmpeg` or `mpv` processes from causing a tight retry loop. The
-operator-facing recovery path is `StationService.recover_output()`, exposed as
-`GET /output/recover`, which only retries the current selected episode when the backend
-is in `error`.
+to `idle`, persists that structured error in runtime state, and the supervisor does not
+immediately relaunch the same episode. `/status` reports this as
+`playback_supervisor.state: "blocked"` with `last_error` set, so the last stop reason is
+still visible after the output backend object has been recreated. This keeps crashing
+`ffmpeg` or `mpv` processes from causing a tight retry loop. The operator-facing recovery
+path is `StationService.recover_output()`, exposed as `GET /output/recover`, which
+retries the current selected episode when either the backend is in `error` or persisted
+supervisor state is blocked.
 
 ## HTTP API
 

@@ -63,7 +63,9 @@ storage:
 - `episodes_dir`: downloaded media directory. Default: `<data_dir>/episodes`.
 
 Startup creates both directories. Runtime state is stored as `state.json`, `feeds.json`,
-and `downloads.json` in `data_dir`.
+and `downloads.json` in `data_dir`. `state.json` includes the selected station state and
+may include a structured `playback_supervisor_error` after an output failure blocks
+automatic playback advance.
 
 Downloaded media is stored below `episodes_dir` in one directory per podcast. Final file
 names are derived from the podcast ID, a hash of the episode identity, and the media

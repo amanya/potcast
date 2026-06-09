@@ -11,7 +11,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from potcast.errors import StorageError
-from potcast.models import DownloadMetadata, Episode, FeedMetadata, RuntimeState, StorageConfig
+from potcast.models import (
+    DownloadMetadata,
+    Episode,
+    FeedMetadata,
+    OutputError,
+    RuntimeState,
+    StorageConfig,
+)
 
 
 class JsonStateStore:
@@ -118,6 +125,7 @@ def _runtime_state_to_json(state: RuntimeState) -> dict[str, Any]:
         "current_podcast_id": state.current_podcast_id,
         "volume": state.volume,
         "previous_podcast_ids": list(state.previous_podcast_ids),
+        "playback_supervisor_error": _output_error_to_json(state.playback_supervisor_error),
     }
 
 
@@ -128,6 +136,27 @@ def _runtime_state_from_json(raw: Mapping[str, Any]) -> RuntimeState:
         current_podcast_id=_optional_string(raw, "current_podcast_id"),
         volume=_integer(raw, "volume", default=100),
         previous_podcast_ids=_string_tuple(raw, "previous_podcast_ids"),
+        playback_supervisor_error=_optional_output_error(raw, "playback_supervisor_error"),
+    )
+
+
+def _output_error_to_json(error: OutputError | None) -> dict[str, str] | None:
+    if error is None:
+        return None
+    return {
+        "code": error.code,
+        "message": error.message,
+    }
+
+
+def _optional_output_error(raw: Mapping[str, Any], key: str) -> OutputError | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    error = _object_value(value, key)
+    return OutputError(
+        code=_string(error, "code"),
+        message=_string(error, "message"),
     )
 
 
