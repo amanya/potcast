@@ -197,6 +197,16 @@ a status object containing:
 - `volume`: persisted station volume from 0 to 100.
 - `output`: the current output backend status.
 
+Phase 8 adds an in-memory feed monitor status used by `/status`, `/feeds`, and
+`/feeds/refresh`:
+
+- `running`: whether a refresh is currently active.
+- `last_started_at`: when the latest accepted refresh began.
+- `last_finished_at`: when the latest refresh finished.
+- `last_result`: the latest refresh outcome, such as `ok` or `failed`.
+- `last_error`: optional structured monitor-level error.
+- `next_refresh_at`: next scheduled refresh time, when provided by the scheduler.
+
 Downloaded episode media is stored below `storage.episodes_dir` in a per-podcast directory. Final filenames are stable and filesystem-safe, derived from the podcast ID, a hash of the episode identity, and the media extension.
 
 ### 6.1 Channel
@@ -432,7 +442,8 @@ Returns service health.
 
 `GET /status`
 
-Returns current station and output state.
+Returns current station and output state. When a feed monitor is configured, the response
+also includes top-level `feed_monitor` timing and status fields.
 
 ```json
 {
@@ -576,6 +587,8 @@ Lowers volume by a configured step, defaulting to 5.
 Starts an immediate feed refresh in the background.
 
 The request should return quickly and not wait for all downloads to complete.
+If another refresh is already running, Potcast rejects the overlapping trigger and returns
+`accepted: false` with reason `already_running`; the already-running refresh continues.
 
 `GET /feeds`
 

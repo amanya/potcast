@@ -127,6 +127,32 @@ class FeedMetadata:
 
 
 @dataclass(frozen=True)
+class FeedMonitorStatus:
+    running: bool = False
+    last_started_at: datetime | None = None
+    last_finished_at: datetime | None = None
+    last_result: str | None = None
+    last_error_code: str | None = None
+    last_error_message: str | None = None
+    next_refresh_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class FeedRefreshTriggerResult:
+    accepted: bool
+    status: FeedMonitorStatus
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class FeedRefreshSummary:
+    status: str
+    checked_count: int
+    updated_count: int
+    failed_count: int
+
+
+@dataclass(frozen=True)
 class DownloadMetadata:
     podcast_id: str
     episode_identity: str

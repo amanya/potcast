@@ -17,6 +17,9 @@ from potcast.models import (
     ChannelConfig,
     CommandError,
     Episode,
+    FeedMetadata,
+    FeedMonitorStatus,
+    FeedRefreshTriggerResult,
     OutputError,
     OutputStatus,
     PodcastConfig,
@@ -55,11 +58,22 @@ class StationController(Protocol):
     def status(self) -> StationStatus: ...
 
 
+class FeedMonitorController(Protocol):
+    """Feed monitor methods used by the HTTP delivery layer."""
+
+    def trigger_refresh(self) -> FeedRefreshTriggerResult: ...
+
+    def status(self) -> FeedMonitorStatus: ...
+
+    def feed_metadata(self) -> dict[str, FeedMetadata]: ...
+
+
 @dataclass(frozen=True)
 class AppServices:
     """Services injected into the Flask app factory."""
 
     station: StationController
+    feeds: FeedMonitorController | None = None
 
 
 def create_app(config: AppConfig | None = None, services: AppServices | None = None) -> Flask:
@@ -73,7 +87,11 @@ def create_app(config: AppConfig | None = None, services: AppServices | None = N
 
     @app.get("/status")
     def status() -> ResponseReturnValue:
-        return _status_response(_station(app).status())
+        payload: dict[str, Any] = {"ok": True, "status": _status_to_json(_station(app).status())}
+        feeds = _feeds(app)
+        if feeds is not None:
+            payload["feed_monitor"] = _feed_monitor_to_json(feeds.status())
+        return jsonify(payload)
 
     @app.get("/play")
     def play() -> ResponseReturnValue:
@@ -153,6 +171,38 @@ def create_app(config: AppConfig | None = None, services: AppServices | None = N
             )
         return _command_response("volume.set", _station(app).set_volume(volume_level))
 
+    @app.get("/feeds")
+    def feeds() -> ResponseReturnValue:
+        monitor = _require_feeds(app)
+        return jsonify(
+            {
+                "ok": True,
+                "feed_monitor": _feed_monitor_to_json(monitor.status()),
+                "feeds": [
+                    _feed_metadata_to_json(metadata)
+                    for metadata in sorted(
+                        monitor.feed_metadata().values(),
+                        key=lambda item: item.podcast_id,
+                    )
+                ],
+            }
+        )
+
+    @app.get("/feeds/refresh")
+    def refresh_feeds() -> ResponseReturnValue:
+        result = _require_feeds(app).trigger_refresh()
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "accepted": result.accepted,
+                    "reason": result.reason,
+                    "feed_monitor": _feed_monitor_to_json(result.status),
+                }
+            ),
+            202 if result.accepted else 200,
+        )
+
     @app.errorhandler(404)
     def not_found(_error: NotFound) -> ResponseReturnValue:
         return (
@@ -176,6 +226,20 @@ def _station(app: Flask) -> StationController:
     if not isinstance(services, AppServices):
         raise RuntimeError("Potcast app requires AppServices.")
     return services.station
+
+
+def _feeds(app: Flask) -> FeedMonitorController | None:
+    services = app.config.get("POTCAST_SERVICES")
+    if not isinstance(services, AppServices):
+        raise RuntimeError("Potcast app requires AppServices.")
+    return services.feeds
+
+
+def _require_feeds(app: Flask) -> FeedMonitorController:
+    feeds = _feeds(app)
+    if feeds is None:
+        raise RuntimeError("Potcast app requires a feed monitor service for feed endpoints.")
+    return feeds
 
 
 def _status_response(status: StationStatus) -> ResponseReturnValue:
@@ -257,6 +321,45 @@ def _episode_to_json(episode: Episode | None) -> dict[str, Any] | None:
         "duration": episode.duration,
         "local_file": _value_to_json(episode.local_file),
         "downloaded_at": _value_to_json(episode.downloaded_at),
+    }
+
+
+def _feed_metadata_to_json(metadata: FeedMetadata) -> dict[str, Any]:
+    return {
+        "podcast_id": metadata.podcast_id,
+        "feed_url": metadata.feed_url,
+        "status": metadata.status,
+        "last_checked_at": _value_to_json(metadata.last_checked_at),
+        "feed_title": metadata.feed_title,
+        "latest_episode": _episode_to_json(metadata.latest_episode),
+        "entry_count": metadata.entry_count,
+        "playable_entry_count": metadata.playable_entry_count,
+        "error": (
+            {
+                "code": metadata.error_code,
+                "message": metadata.error_message,
+            }
+            if metadata.error_code is not None
+            else None
+        ),
+    }
+
+
+def _feed_monitor_to_json(status: FeedMonitorStatus) -> dict[str, Any]:
+    return {
+        "running": status.running,
+        "last_started_at": _value_to_json(status.last_started_at),
+        "last_finished_at": _value_to_json(status.last_finished_at),
+        "last_result": status.last_result,
+        "last_error": (
+            {
+                "code": status.last_error_code,
+                "message": status.last_error_message,
+            }
+            if status.last_error_code is not None
+            else None
+        ),
+        "next_refresh_at": _value_to_json(status.next_refresh_at),
     }
 
 

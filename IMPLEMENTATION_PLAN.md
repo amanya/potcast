@@ -286,6 +286,18 @@ Implement:
 - Structured feed statuses.
 - Safe shutdown.
 
+Behavior:
+
+- Feed refreshes fetch each configured RSS feed, parse the newest playable episode, and
+  atomically download only when the newest episode differs from the current download.
+- Feed fetch, parse, and download failures update structured status while preserving the
+  previous good feed episode metadata and download metadata.
+- `/feeds/refresh` starts work in the background and returns before downloads complete.
+- Overlapping refresh triggers are rejected with `already_running` while the active
+  refresh continues.
+- The scheduler exposes one-tick behavior for tests and does not require long sleeps in
+  the default suite.
+
 Tests:
 
 - Refresh updates metadata for a new episode.

@@ -11,6 +11,9 @@ from potcast.models import (
     ChannelConfig,
     CommandError,
     Episode,
+    FeedMetadata,
+    FeedMonitorStatus,
+    FeedRefreshTriggerResult,
     OutputStatus,
     PodcastConfig,
     StationCommandResult,
@@ -72,10 +75,59 @@ class SpyStationService:
         )
 
 
+class SpyFeedService:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.accept_refresh = True
+        self.running = False
+
+    def trigger_refresh(self) -> FeedRefreshTriggerResult:
+        self.calls.append("trigger_refresh")
+        if not self.accept_refresh:
+            return FeedRefreshTriggerResult(
+                accepted=False,
+                reason="already_running",
+                status=self.status(),
+            )
+        self.running = True
+        return FeedRefreshTriggerResult(accepted=True, status=self.status())
+
+    def status(self) -> FeedMonitorStatus:
+        self.calls.append("status")
+        return FeedMonitorStatus(
+            running=self.running,
+            last_started_at=datetime(2026, 6, 9, 12, tzinfo=timezone.utc),
+            last_finished_at=None,
+            last_result=None,
+        )
+
+    def feed_metadata(self) -> dict[str, FeedMetadata]:
+        self.calls.append("feed_metadata")
+        return {
+            "history-extra": FeedMetadata(
+                podcast_id="history-extra",
+                feed_url="https://example.com/history-extra.xml",
+                status="ok",
+                last_checked_at=datetime(2026, 6, 9, 12, tzinfo=timezone.utc),
+                feed_title="History Extra",
+                latest_episode=_status(volume=70).active_episode,
+                entry_count=2,
+                playable_entry_count=1,
+            )
+        }
+
+
 def client_and_service() -> tuple[FlaskClient, SpyStationService]:
     service = SpyStationService()
     app = create_app(services=AppServices(station=service))
     return app.test_client(), service
+
+
+def client_and_services() -> tuple[FlaskClient, SpyStationService, SpyFeedService]:
+    station = SpyStationService()
+    feeds = SpyFeedService()
+    app = create_app(services=AppServices(station=station, feeds=feeds))
+    return app.test_client(), station, feeds
 
 
 def test_health_returns_version() -> None:
@@ -102,6 +154,20 @@ def test_status_returns_station_status_json() -> None:
     assert payload["status"]["active_episode"]["downloaded_at"] == "2026-06-09T12:00:00+00:00"
     assert payload["status"]["output"]["backend"] == "fake"
     assert service.calls == [("status", None)]
+
+
+def test_status_includes_feed_monitor_when_configured() -> None:
+    client, station, feeds = client_and_services()
+
+    response = client.get("/status")
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["status"]["station_state"] == "playing"
+    assert payload["feed_monitor"]["running"] is False
+    assert payload["feed_monitor"]["last_started_at"] == "2026-06-09T12:00:00+00:00"
+    assert station.calls == [("status", None)]
+    assert feeds.calls == ["status"]
 
 
 def test_station_command_routes_call_station_service() -> None:
@@ -253,6 +319,46 @@ def test_unknown_endpoint_returns_structured_404() -> None:
         },
     }
     assert service.calls == []
+
+
+def test_feeds_returns_feed_metadata_and_monitor_status() -> None:
+    client, _station, feeds = client_and_services()
+
+    response = client.get("/feeds")
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["feed_monitor"]["running"] is False
+    assert payload["feeds"][0]["podcast_id"] == "history-extra"
+    assert payload["feeds"][0]["latest_episode"]["identity"] == "episode-1"
+    assert feeds.calls == ["status", "feed_metadata"]
+
+
+def test_feed_refresh_starts_background_refresh_quickly() -> None:
+    client, _station, feeds = client_and_services()
+
+    response = client.get("/feeds/refresh")
+
+    payload = response.get_json()
+    assert response.status_code == 202
+    assert payload["ok"] is True
+    assert payload["accepted"] is True
+    assert payload["reason"] is None
+    assert payload["feed_monitor"]["running"] is True
+    assert feeds.calls == ["trigger_refresh", "status"]
+
+
+def test_feed_refresh_reports_overlapping_refresh_without_error() -> None:
+    client, _station, feeds = client_and_services()
+    feeds.accept_refresh = False
+
+    response = client.get("/feeds/refresh")
+
+    assert response.status_code == 200
+    assert response.get_json()["accepted"] is False
+    assert response.get_json()["reason"] == "already_running"
+    assert feeds.calls == ["trigger_refresh", "status"]
 
 
 def test_volume_up_and_down_clamp_to_bounds() -> None:
