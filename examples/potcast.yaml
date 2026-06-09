@@ -1,0 +1,60 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+storage:
+  data_dir: "/data"
+  episodes_dir: "/data/episodes"
+
+station:
+  start_on_boot: false
+  shuffle_podcasts: true
+  shuffle_channels: false
+  volume: 70
+  sleep_timer_minutes: null
+
+outputs:
+  primary: "icecast"
+  enabled:
+    - "icecast"
+  icecast:
+    enabled: true
+    host: "icecast"
+    port: 8000
+    source_password: "change-me"
+    mount: "/potcast.mp3"
+    public_url: "http://localhost:8000/potcast.mp3"
+    name: "Potcast"
+    description: "Personal podcast radio"
+    genre: "Podcast"
+    format: "mp3"
+    bitrate_kbps: 128
+    sample_rate_hz: 44100
+  local_audio:
+    enabled: false
+    player: "mpv"
+    device: "default"
+    mixer: "software"
+
+feeds:
+  refresh_interval_minutes: 30
+  download_timeout_seconds: 60
+  user_agent: "Potcast/0.1.0"
+
+channels:
+  - id: "sleep"
+    name: "Sleep"
+    podcasts:
+      - id: "history-extra"
+        name: "History Extra"
+        feed_url: "https://example.com/history-extra/rss"
+      - id: "science-hour"
+        name: "Science Hour"
+        feed_url: "https://example.com/science-hour/rss"
+
+  - id: "stories"
+    name: "Stories"
+    podcasts:
+      - id: "short-fiction"
+        name: "Short Fiction"
+        feed_url: "https://example.com/short-fiction/rss"

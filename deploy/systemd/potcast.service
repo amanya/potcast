@@ -1,0 +1,17 @@
+[Unit]
+Description=Potcast personal podcast radio
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=potcast
+Group=audio
+WorkingDirectory=/opt/potcast
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/potcast/.venv/bin/potcast --config /etc/potcast.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
