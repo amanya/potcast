@@ -6,7 +6,9 @@ lets simple HTTP commands control playback through Icecast or Raspberry Pi local
 
 The current service runs one configured primary output backend. Feed refreshes keep local
 episode files up to date; station commands select the active channel or podcast and send
-the selected local episode to the output backend.
+the selected local episode to the output backend. While the station is playing, Potcast
+also watches the active output process and advances to the next playable podcast when an
+episode finishes.
 
 ## Quick Start
 

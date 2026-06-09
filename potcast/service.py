@@ -191,6 +191,21 @@ class StationService:
         state = self._activate(state, downloads)
         return self._status(state, downloads)
 
+    def advance_if_finished(self) -> StationCommandResult:
+        """Advance once when the active output reports that its episode ended."""
+
+        state = self._load_state()
+        downloads = self.state_store.load_download_metadata()
+        if state.station_status != "playing":
+            return self._result(state, downloads)
+        if not self.output.consume_finished_episode():
+            return self._result(state, downloads)
+
+        state = self._selector(downloads).next_podcast(state)
+        state = self._play_selected(state, downloads)
+        self._save_state(state)
+        return self._result(state, downloads)
+
     def _change_channel(self, *, offset: int) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()

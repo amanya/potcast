@@ -84,6 +84,15 @@ class LocalAudioOutputBackend:
     def status(self) -> OutputStatus:
         return self._status
 
+    def consume_finished_episode(self) -> bool:
+        if self._process is None:
+            return False
+        if self._process.poll() is None:
+            return False
+        self._process = None
+        self._status = replace(self._status, state="idle", connected=False, error=None)
+        return True
+
     def build_command(self, episode: Episode, *, volume: int | None = None) -> list[str]:
         return build_mpv_local_audio_command(
             self.config,

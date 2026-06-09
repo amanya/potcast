@@ -29,7 +29,8 @@ Potcast keeps business behavior separate from delivery and runtime wiring.
 - Creates `StationService`.
 - Creates HTTP feed fetch and download dependencies.
 - Creates `FeedRefreshService`.
-- Creates `PeriodicScheduler`.
+- Creates `PeriodicScheduler` for feed refresh.
+- Creates `PeriodicScheduler` for playback supervision.
 - Wraps feed status with scheduler `next_refresh_at`.
 - Creates the Flask app with injected services.
 
@@ -76,13 +77,21 @@ the previous feed episode and downloaded media. Supported media types are `audio
 ## Scheduler
 
 `PeriodicScheduler` exposes `run_once()` and `run_due()` so scheduler behavior can be
-tested without sleeps. Runtime startup starts the background scheduler thread. Manual
-`/feeds/refresh` uses the same feed refresh service and rejects overlapping refreshes.
+tested without sleeps. Runtime startup starts one background scheduler for feed refresh
+and one lightweight playback supervisor that checks whether the active output episode has
+finished. Manual `/feeds/refresh` uses the same feed refresh service and rejects
+overlapping refreshes.
 
 The scheduler's background loop runs one refresh immediately after startup, then waits
 for the configured interval before the next tick. `/status` and `/feeds` expose feed
 monitor status, including `running`, latest start and finish times, latest result or
 error, and the scheduler-provided `next_refresh_at`.
+
+The playback supervisor calls `StationService.advance_if_finished()`. That service method
+only advances when persisted station state is `playing` and the output backend consumes a
+finished-episode signal. Paused and stopped stations ignore completion checks. If no
+podcast in the active channel has a playable download when completion is consumed, the
+station moves to `idle`.
 
 ## HTTP API
 
@@ -107,7 +116,8 @@ current implementation.
 `IcecastOutputBackend` builds an `ffmpeg` command for the selected local episode and
 streams it to Icecast. `LocalAudioOutputBackend` builds an `mpv` command for the selected
 local episode and audio device. Both backends accept an injected process launcher so unit
-tests can assert command construction without starting real processes.
+tests can assert command construction and process-completion detection without starting
+real processes.
 
 ## Adding An Output Backend
 
@@ -120,6 +130,7 @@ def stop() -> None: ...
 def play_episode(episode) -> None: ...
 def set_volume(volume: int) -> None: ...
 def status() -> OutputStatus: ...
+def consume_finished_episode() -> bool: ...
 ```
 
 Add config validation, a runtime factory branch in `build_output_backend()`, and tests

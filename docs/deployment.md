@@ -10,8 +10,8 @@ potcast --config examples/potcast.yaml
 ```
 
 The CLI loads the YAML config, creates storage directories, composes the feed refresh
-service, scheduler, station service, output backend, and Flask app, then serves the HTTP
-API.
+service, feed scheduler, playback supervisor, station service, output backend, and Flask
+app, then serves the HTTP API.
 
 For local development from the repository, install the package with development tools:
 
@@ -151,6 +151,10 @@ Startup should serve:
 
 Commands are intentionally HTTP GET endpoints for first-version integration with phone
 shortcuts, browsers, home automation, and simple media controls.
+
+While the station is playing, Potcast supervises the active `ffmpeg` or `mpv` process and
+automatically advances to the next playable podcast in the active channel when the
+current episode process exits. Paused and stopped stations do not auto-advance.
 
 Implemented command endpoints:
 

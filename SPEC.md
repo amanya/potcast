@@ -303,10 +303,9 @@ Unsupported media should be skipped.
 ## 8. Station and Outputs
 
 Potcast selects playable downloads from the currently selected channel and sends the
-selected local episode to the configured output backend. The product goal is a continuous
-station; the current packaged implementation controls the selected episode and backend
-process, but does not yet supervise process exit to automatically advance when an episode
-finishes.
+selected local episode to the configured output backend. The packaged implementation
+supervises the active output process and advances to the next playable podcast in the
+active channel when the current episode process exits.
 
 Station sequence:
 
@@ -314,7 +313,8 @@ Station sequence:
 2. Select active podcast within that channel.
 3. Send the downloaded latest episode for that podcast to the configured output.
 4. HTTP commands can advance to another podcast in the same channel or switch channels.
-5. Future output supervision should advance automatically when an episode finishes.
+5. Output supervision advances automatically when an episode finishes while the station
+   is playing.
 
 If a podcast does not have a downloaded episode, Potcast should skip it.
 
@@ -322,6 +322,9 @@ If no podcasts in the current channel have playable downloads, Potcast remains i
 retries when downloads become available. For Icecast, keeping the source connection alive
 with silence is preferred future behavior; the current simple backend stops the process
 when there is no selected local episode.
+
+Paused and stopped stations do not auto-advance, even if a previously active output
+process has ended.
 
 ### 8.1 Output Architecture
 
@@ -342,7 +345,7 @@ Output backend responsibilities:
 - Report output health and errors.
 - Support start, stop, pause, next item, and metadata updates.
 
-The first output backend interface supports `start`, `pause`, `stop`, `play_episode`, `set_volume`, and `status`. Subprocess-backed implementations construct commands through injectable launchers so tests can assert command construction without launching real external programs.
+The first output backend interface supports `start`, `pause`, `stop`, `play_episode`, `set_volume`, `status`, and a consumed completion check used by the station supervisor. Subprocess-backed implementations construct commands through injectable launchers so tests can assert command construction and process completion without launching real external programs.
 
 Supported first-version output backends:
 

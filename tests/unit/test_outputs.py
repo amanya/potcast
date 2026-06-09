@@ -13,6 +13,10 @@ class FakeProcess:
     def __init__(self) -> None:
         self.terminated = False
         self.waited = False
+        self.return_code: int | None = None
+
+    def poll(self) -> int | None:
+        return self.return_code
 
     def terminate(self) -> None:
         self.terminated = True
@@ -129,6 +133,23 @@ def test_icecast_backend_uses_injected_launcher_without_starting_ffmpeg() -> Non
     assert backend.status().state == "playing"
     assert backend.status().connected is True
     assert backend.status().current_episode_identity == "episode-guid"
+
+
+def test_icecast_backend_detects_completed_process_without_real_subprocess() -> None:
+    launcher = RecordingLauncher()
+    backend = IcecastOutputBackend(IcecastOutputConfig(source_password="secret"), launcher=launcher)
+    backend.play_episode(episode())
+
+    running = backend.consume_finished_episode()
+    launcher.processes[0].return_code = 0
+    finished = backend.consume_finished_episode()
+    duplicate = backend.consume_finished_episode()
+
+    assert running is False
+    assert finished is True
+    assert duplicate is False
+    assert backend.status().state == "idle"
+    assert backend.status().connected is False
 
 
 def test_local_audio_backend_builds_expected_mpv_command() -> None:

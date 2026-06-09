@@ -158,6 +158,90 @@ def test_next_changes_podcast_and_calls_output_backend() -> None:
     assert output.calls == [("play_episode", "science-hour-episode")]
 
 
+def test_advance_if_finished_moves_to_next_playable_podcast() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra", "science-hour"),
+    )
+    service, output = make_service(store)
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.finish_current_episode()
+
+    result = service.advance_if_finished()
+
+    assert result.ok is True
+    assert store.state.station_status == "playing"
+    assert store.state.current_podcast_id == "science-hour"
+    assert output.calls == [("play_episode", "science-hour-episode")]
+
+
+def test_advance_if_finished_idles_when_no_playable_podcast_is_available() -> None:
+    store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="playing",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads={},
+    )
+    service, output = make_service(store)
+    output.play_episode(_episode_identity_only("history-extra-episode"))
+    output.calls.clear()
+    output.finish_current_episode()
+
+    result = service.advance_if_finished()
+
+    assert result.ok is True
+    assert store.state.station_status == "idle"
+    assert store.state.current_podcast_id is None
+    assert output.calls == [("stop", None)]
+
+
+def test_advance_if_finished_does_not_advance_when_paused_or_stopped() -> None:
+    paused_store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="paused",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra", "science-hour"),
+    )
+    paused_service, paused_output = make_service(paused_store)
+    paused_output.play_episode(_episode_identity_only("history-extra-episode"))
+    paused_output.calls.clear()
+    paused_output.finish_current_episode()
+
+    stopped_store = MemoryStateStore(
+        state=RuntimeState(
+            station_status="stopped",
+            current_channel_id="sleep",
+            current_podcast_id="history-extra",
+            volume=70,
+        ),
+        downloads=downloads("history-extra", "science-hour"),
+    )
+    stopped_service, stopped_output = make_service(stopped_store)
+    stopped_output.play_episode(_episode_identity_only("history-extra-episode"))
+    stopped_output.calls.clear()
+    stopped_output.finish_current_episode()
+
+    paused_service.advance_if_finished()
+    stopped_service.advance_if_finished()
+
+    assert paused_store.state.current_podcast_id == "history-extra"
+    assert stopped_store.state.current_podcast_id == "history-extra"
+    assert paused_output.calls == []
+    assert stopped_output.calls == []
+
+
 def test_previous_uses_selector_behavior_and_calls_output_backend_when_playable() -> None:
     store = MemoryStateStore(
         state=RuntimeState(

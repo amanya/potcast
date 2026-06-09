@@ -11,6 +11,9 @@ from potcast.state import JsonStateStore
 
 
 class FakeProcess:
+    def poll(self) -> int | None:
+        return None
+
     def terminate(self) -> None:
         return None
 
@@ -36,6 +39,7 @@ def test_build_runtime_creates_directories_initial_state_services_and_app(tmp_pa
     assert runtime.config.storage.episodes_dir.is_dir()
     assert runtime.services.state_store.load_runtime_state().volume == 42
     assert runtime.services.feeds.status().next_refresh_at is not None
+    assert runtime.services.playback_scheduler.status().next_run_at is not None
 
     response = runtime.app.test_client().get("/health")
     assert response.status_code == 200

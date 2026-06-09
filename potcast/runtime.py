@@ -46,6 +46,7 @@ class RuntimeServices:
     station: StationService
     feeds: ScheduledFeedMonitor
     scheduler: PeriodicScheduler
+    playback_scheduler: PeriodicScheduler
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ class PotcastRuntime:
     def start(self) -> None:
         LOGGER.info("Starting feed scheduler")
         self.services.scheduler.start()
+        LOGGER.info("Starting playback supervisor")
+        self.services.playback_scheduler.start()
         if self.config.station.start_on_boot:
             LOGGER.info("Starting station because station.start_on_boot is enabled")
             self.services.station.play()
@@ -66,6 +69,7 @@ class PotcastRuntime:
     def stop(self) -> None:
         LOGGER.info("Stopping Potcast runtime")
         self.services.scheduler.stop(timeout=5)
+        self.services.playback_scheduler.stop(timeout=5)
         self.services.station.stop()
 
     def run(self, runner: AppRunner | None = None) -> None:
@@ -139,12 +143,17 @@ def build_runtime(
         interval=timedelta(minutes=config.feeds.refresh_interval_minutes),
         job=refresh_service.trigger_refresh,
     )
+    playback_scheduler = PeriodicScheduler(
+        interval=timedelta(seconds=1),
+        job=station.advance_if_finished,
+    )
     feeds = ScheduledFeedMonitor(refresh_service, scheduler)
     services = RuntimeServices(
         state_store=state_store,
         station=station,
         feeds=feeds,
         scheduler=scheduler,
+        playback_scheduler=playback_scheduler,
     )
     app = create_app(config=config, services=AppServices(station=station, feeds=feeds))
 

@@ -25,9 +25,13 @@ class OutputBackend(Protocol):
 
     def status(self) -> OutputStatus: ...
 
+    def consume_finished_episode(self) -> bool: ...
+
 
 class ProcessHandle(Protocol):
     """Small process API used by subprocess-backed outputs."""
+
+    def poll(self) -> object | None: ...
 
     def terminate(self) -> None: ...
 
@@ -53,6 +57,7 @@ class FakeOutputBackend:
     def __init__(self, *, backend: str = "fake", volume: int = 100) -> None:
         self.calls: list[tuple[str, object | None]] = []
         self._status = OutputStatus(backend=backend, volume=volume)
+        self._finished = False
 
     def start(self) -> None:
         self.calls.append(("start", None))
@@ -74,6 +79,7 @@ class FakeOutputBackend:
 
     def play_episode(self, episode: Episode) -> None:
         self.calls.append(("play_episode", episode.identity))
+        self._finished = False
         self._status = replace(
             self._status,
             state="playing",
@@ -93,6 +99,16 @@ class FakeOutputBackend:
             connected=False,
             error=OutputError(code=code, message=message),
         )
+
+    def finish_current_episode(self) -> None:
+        self._finished = self._status.current_episode_identity is not None
+
+    def consume_finished_episode(self) -> bool:
+        if not self._finished:
+            return False
+        self._finished = False
+        self._status = replace(self._status, state="idle", connected=False, error=None)
+        return True
 
     def status(self) -> OutputStatus:
         return self._status
