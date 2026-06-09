@@ -6,7 +6,10 @@ Potcast is intended to be a maintainable, well-tested personal podcast radio ser
 
 ## Project Intent
 
-Potcast runs a continuous podcast station from configured RSS feeds.
+Potcast runs and controls a personal podcast station from configured RSS feeds. The
+long-term goal is continuous radio-style playback; current work should document the
+behavior that is actually implemented and keep the output architecture ready for that
+continuous station model.
 
 Core responsibilities:
 
@@ -15,7 +18,7 @@ Core responsibilities:
 - Monitor RSS feeds.
 - Keep the latest playable episode per podcast.
 - Replace older local episode files safely.
-- Run a continuous station.
+- Run and control station playback.
 - Send audio to output backends such as Icecast or Raspberry Pi local audio.
 - Expose simple HTTP GET commands for station control.
 

@@ -2,9 +2,13 @@
 
 ## 1. Purpose
 
-Potcast is a lightweight personal podcast radio service designed to run unattended on a NAS, home server, or Raspberry Pi and continuously deliver podcast audio to one or more outputs.
+Potcast is a lightweight personal podcast radio service designed to run unattended on a
+NAS, home server, or Raspberry Pi and deliver podcast audio to a configured output.
 
-The service maintains a curated set of podcast feeds grouped into user-defined channels. It monitors those feeds, keeps the latest available episode for each podcast, continuously runs a station from the selected channel, and exposes simple HTTP commands for station control.
+The service maintains a curated set of podcast feeds grouped into user-defined channels.
+It monitors those feeds, keeps the latest available episode for each podcast, sends the
+selected episode from the active channel to the output backend, and exposes simple HTTP
+commands for station control.
 
 ## 2. Goals
 
@@ -16,7 +20,7 @@ The service maintains a curated set of podcast feeds grouped into user-defined c
 - Continuously monitor podcast RSS feeds.
 - Download the newest episode for each configured podcast.
 - Replace the previously downloaded episode from the same podcast when a newer one appears.
-- Deliver audio continuously through a configured output backend.
+- Deliver selected podcast audio through a configured output backend.
 - Support Icecast-compatible streaming.
 - Support Raspberry Pi local audio output.
 - Keep the stream output architecture extensible for future targets such as AirPlay, Chromecast, Bluetooth, or Home Assistant media players.
@@ -137,7 +141,7 @@ channels:
 - `storage.episodes_dir`: directory for downloaded episodes. Default: `<data_dir>/episodes`.
 - `station.start_on_boot`: start broadcasting when the service starts. Default: `false`.
 - `station.shuffle_podcasts`: randomize podcast order within a channel. Default: `true`.
-- `station.shuffle_channels`: randomize channel order. Default: `false`.
+- `station.shuffle_channels`: reserved for future randomized channel order. Default: `false`.
 - `station.volume`: station gain from 0 to 100. Default: `100`.
 - `station.sleep_timer_minutes`: optional automatic pause timer. Default: `null`.
 - `outputs.icecast.enabled`: enable Icecast output. Default: `true`.
@@ -298,19 +302,26 @@ Unsupported media should be skipped.
 
 ## 8. Station and Outputs
 
-Potcast runs continuously from the currently selected channel and sends audio to the configured output backend.
+Potcast selects playable downloads from the currently selected channel and sends the
+selected local episode to the configured output backend. The product goal is a continuous
+station; the current packaged implementation controls the selected episode and backend
+process, but does not yet supervise process exit to automatically advance when an episode
+finishes.
 
 Station sequence:
 
 1. Select active channel.
 2. Select active podcast within that channel.
 3. Send the downloaded latest episode for that podcast to the configured output.
-4. When the episode finishes, advance to another podcast in the same channel.
-5. Continue indefinitely while the station is active.
+4. HTTP commands can advance to another podcast in the same channel or switch channels.
+5. Future output supervision should advance automatically when an episode finishes.
 
 If a podcast does not have a downloaded episode, Potcast should skip it.
 
-If no podcasts in the current channel have playable downloads, Potcast should output silence or remain idle and retry when downloads become available. For Icecast, the preferred behavior is to keep the source connection alive with silence so listeners do not need to reconnect.
+If no podcasts in the current channel have playable downloads, Potcast remains idle and
+retries when downloads become available. For Icecast, keeping the source connection alive
+with silence is preferred future behavior; the current simple backend stops the process
+when there is no selected local episode.
 
 ### 8.1 Output Architecture
 
@@ -335,14 +346,14 @@ The first output backend interface supports `start`, `pause`, `stop`, `play_epis
 
 Supported first-version output backends:
 
-- `icecast`: publishes a continuous network stream.
+- `icecast`: publishes a network stream to an Icecast server.
 - `local_audio`: plays through the host machine's local audio device, useful for Raspberry Pi internal audio or a directly connected speaker.
 
 Future backends may include `airplay`, `chromecast`, `bluetooth`, or `home_assistant`.
 
 ### 8.2 Icecast Output
 
-The Icecast output publishes a continuous encoded audio stream to an Icecast server.
+The Icecast output publishes encoded audio to an Icecast server.
 
 Phase 5 provides direct `ffmpeg` command construction for streaming one selected local episode to Icecast. The backend applies configured host, port, source password, mount, stream metadata, format, bitrate, sample rate, and software volume. Process launching is injected so command construction remains testable without Icecast or `ffmpeg`.
 
@@ -415,9 +426,8 @@ When `shuffle_channels` is `false`:
 
 - `next_channel` and `previous_channel` follow YAML order.
 
-When `shuffle_channels` is `true`:
-
-- Channel selection may be randomized, while still avoiding immediate repeats where possible.
+`shuffle_channels` is accepted in configuration but reserved in the current
+implementation. Channel next and previous commands currently follow YAML order.
 
 ## 9. HTTP API
 
@@ -496,7 +506,9 @@ downloaded episode is playable in the active channel, the station enters `idle`.
 
 `GET /pause`
 
-Pauses the station output. The Icecast source should preferably remain connected and broadcast silence.
+Pauses the station output. The current subprocess-backed backends terminate the active
+process and report `paused`. A future radio-style Icecast backend may keep the source
+connected and broadcast silence.
 
 The command is idempotent. Repeated pause commands leave the station paused without
 issuing duplicate backend pause calls.
@@ -594,51 +606,12 @@ If another refresh is already running, Potcast rejects the overlapping trigger a
 
 Returns configured feeds and their current status.
 
-### 9.7 Output Commands
+### 9.7 Output Status
 
-`GET /stream`
-
-Returns stream information when a streaming output is configured.
-
-```json
-{
-  "ok": true,
-  "backend": "icecast",
-  "url": "http://nas.local:8000/potcast.mp3",
-  "connected": true,
-  "format": "mp3",
-  "bitrate_kbps": 128
-}
-```
-
-`GET /outputs`
-
-Returns all configured output backends and their status.
-
-Example response:
-
-```json
-{
-  "ok": true,
-  "primary": "icecast",
-  "outputs": [
-    {
-      "backend": "icecast",
-      "enabled": true,
-      "connected": true,
-      "url": "http://nas.local:8000/potcast.mp3"
-    },
-    {
-      "backend": "local_audio",
-      "enabled": false,
-      "connected": false,
-      "device": "default"
-    }
-  ]
-}
-```
-
-Future output-specific endpoints may be added for AirPlay, Chromecast, Bluetooth, local audio device selection, or Home Assistant targets.
+The current API exposes output status inside `GET /status`. Dedicated `/stream` and
+`/outputs` endpoints are not implemented yet. Future output-specific endpoints may be
+added for listener URLs, AirPlay, Chromecast, Bluetooth, local audio device selection, or
+Home Assistant targets.
 
 ### 9.8 Response Format
 
@@ -692,8 +665,8 @@ The first version can use Python threads:
 
 - Main thread: Flask app.
 - Feed monitor thread: periodic RSS checks.
-- Station thread: advances selected podcast when an episode ends.
-- Output thread or subprocess monitor: watches Icecast source health or local player health.
+- Future station supervision: advances selected podcast when an episode ends.
+- Output subprocesses: `ffmpeg` for Icecast or `mpv` for local audio.
 
 Shared state must be protected with a lock.
 
@@ -748,8 +721,6 @@ services:
     volumes:
       - ./config.yaml:/config/potcast.yaml:ro
       - ./data:/data
-    environment:
-      POTCAST_CONFIG: /config/potcast.yaml
     depends_on:
       - icecast
 
@@ -936,10 +907,9 @@ The first usable version is complete when:
 - Station output starts automatically when `start_on_boot` is enabled.
 - Potcast can publish an Icecast-compatible stream.
 - Potcast can play through local audio when `local_audio` is enabled.
-- `/stream` returns the listener URL and output status when streaming is enabled.
-- `/outputs` returns configured backend status.
 - `/play`, `/pause`, `/stop`, `/next`, `/previous`, `/channel/next`, and `/channel/previous` work.
-- Audio output continues automatically when an episode ends.
+- `/status` returns station, output, and feed monitor status.
+- `/feeds` and `/feeds/refresh` expose feed status and immediate refresh.
 - The service keeps playing or idling gracefully when a feed or download fails.
 - Logs are useful enough to debug common setup problems.
 - The default test suite covers core business logic and passes locally.

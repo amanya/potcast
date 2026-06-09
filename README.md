@@ -1,24 +1,45 @@
 # Potcast
 
 Potcast is a personal podcast radio service. It monitors configured podcast RSS feeds,
-keeps the latest playable episode for each podcast, and runs a continuous station through
-outputs such as Icecast or Raspberry Pi local audio.
+keeps the latest playable episode for each podcast, groups podcasts into channels, and
+lets simple HTTP commands control playback through Icecast or Raspberry Pi local audio.
+
+The current service runs one configured primary output backend. Feed refreshes keep local
+episode files up to date; station commands select the active channel or podcast and send
+the selected local episode to the output backend.
 
 ## Quick Start
 
 Create a config from `examples/potcast.yaml`, replace the example feed URLs, and run:
 
 ```bash
-python -m pip install -e .
+python -m pip install -e ".[dev]"
 potcast --config examples/potcast.yaml
 ```
+
+Use `--log-level DEBUG` when you want more startup and command logging.
 
 The HTTP server exposes:
 
 - `GET /health` for process health and version.
 - `GET /status` for station, output, and feed monitor state.
-- `GET /play`, `/pause`, `/stop`, `/next`, and related command endpoints.
-- `GET /feeds` and `/feeds/refresh` for feed monitor status and manual refresh.
+- `GET /play`, `/pause`, `/toggle`, `/stop`, `/next`, and `/previous`.
+- `GET /channel/next`, `/channel/previous`, and `/channel/<channel_id>`.
+- `GET /podcast/next`, `/podcast/previous`, and `/podcast/<podcast_id>`.
+- `GET /volume`, `/volume/<level>`, `/volume/up`, and `/volume/down`.
+- `GET /feeds` and `/feeds/refresh` for feed status and manual refresh.
+
+Errors are JSON objects such as:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "unknown_channel",
+    "message": "Channel not found: bedtime"
+  }
+}
+```
 
 ## Docker
 
@@ -37,6 +58,9 @@ have downloaded.
 Potcast uses one YAML file. The most important sections are `channels`, `outputs`,
 `storage`, `station`, `feeds`, and `server`. See `docs/configuration.md` for the complete
 reference.
+
+Each channel has a stable `id`, a display `name`, and one or more podcasts. Podcast IDs
+must be unique across the whole config in this first version.
 
 ## Deployment
 

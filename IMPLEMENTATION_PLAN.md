@@ -264,8 +264,6 @@ Endpoints:
 - `/volume/down`
 - `/feeds`
 - `/feeds/refresh`
-- `/stream`
-- `/outputs`
 
 Tests:
 
@@ -275,6 +273,11 @@ Tests:
 - Unknown channel returns structured `404`.
 - Invalid volume returns structured `400`.
 - Feed refresh returns quickly and does not block on downloads.
+
+Planned but not implemented in this phase:
+
+- `/stream`
+- `/outputs`
 
 ## 11. Phase 8: Feed Monitor and Scheduler
 
