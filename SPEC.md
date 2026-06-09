@@ -185,6 +185,18 @@ Phase 5 adds a structured in-memory output status model used by output backends:
 - `volume`: backend output volume from 0 to 100.
 - `error`: optional structured error with `code` and `message`.
 
+Phase 6 adds an application station service that coordinates persisted runtime state,
+downloaded episode metadata, station selection, and the configured output backend. The
+service exposes typed command results with `ok`, optional structured command errors, and
+a status object containing:
+
+- `station_state`: `stopped`, `idle`, `playing`, or `paused`.
+- `active_channel`: the configured active channel, when any.
+- `active_podcast`: the configured active podcast, when any.
+- `active_episode`: the downloaded episode currently selected for playback, when any.
+- `volume`: persisted station volume from 0 to 100.
+- `output`: the current output backend status.
+
 Downloaded episode media is stored below `storage.episodes_dir` in a per-podcast directory. Final filenames are stable and filesystem-safe, derived from the podcast ID, a hash of the episode identity, and the media extension.
 
 ### 6.1 Channel
@@ -457,9 +469,16 @@ Returns current station, output, and feed state.
 
 Starts or resumes the station output.
 
+The command is idempotent. If the station is already marked `playing`, it returns the
+current status without replaying the same episode through the output backend. If no
+downloaded episode is playable in the active channel, the station enters `idle`.
+
 `GET /pause`
 
 Pauses the station output. The Icecast source should preferably remain connected and broadcast silence.
+
+The command is idempotent. Repeated pause commands leave the station paused without
+issuing duplicate backend pause calls.
 
 `GET /toggle`
 
@@ -469,6 +488,9 @@ Toggles between active and paused station output.
 
 Stops the station output and releases the output backend connection.
 
+The command is idempotent. Repeated stop commands leave the station stopped without
+issuing duplicate backend stop calls.
+
 `GET /next`
 
 Moves to the next podcast in the active channel.
@@ -476,6 +498,9 @@ Moves to the next podcast in the active channel.
 `GET /previous`
 
 Moves to the previous podcast in the active channel.
+
+When `next` or `previous` selects a playable downloaded episode, the station service
+updates runtime state and sends that episode to the output backend.
 
 ### 9.3 Channel Commands
 
@@ -491,6 +516,10 @@ Switches to the previous channel and starts or continues streaming from that cha
 
 Switches to a specific channel by ID.
 
+Unknown channels return a structured `unknown_channel` command error. Known channel
+changes select the first playable downloaded podcast in that channel, if one exists,
+and send it to the output backend.
+
 ### 9.4 Podcast Commands
 
 `GET /podcast/next`
@@ -505,6 +534,10 @@ Alias for `GET /previous`.
 
 Switches to a specific podcast by ID if it belongs to the active channel.
 
+Unknown podcasts in the active channel return a structured `unknown_podcast` command
+error. Podcasts without a playable downloaded episode return a structured
+`podcast_unavailable` command error.
+
 ### 9.5 Volume Commands
 
 `GET /volume`
@@ -514,6 +547,9 @@ Returns current station gain.
 `GET /volume/<level>`
 
 Sets station gain to an integer from 0 to 100.
+
+Invalid levels return a structured `invalid_volume` command error. Valid levels update
+persisted runtime state and the output backend volume.
 
 `GET /volume/up`
 

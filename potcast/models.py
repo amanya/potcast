@@ -155,6 +155,29 @@ class OutputStatus:
 
 
 @dataclass(frozen=True)
+class CommandError:
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class StationStatus:
+    station_state: str
+    active_channel: ChannelConfig | None
+    active_podcast: PodcastConfig | None
+    active_episode: Episode | None
+    volume: int
+    output: OutputStatus
+
+
+@dataclass(frozen=True)
+class StationCommandResult:
+    ok: bool
+    status: StationStatus
+    error: CommandError | None = None
+
+
+@dataclass(frozen=True)
 class ChannelConfig:
     id: str
     name: str
