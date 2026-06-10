@@ -159,36 +159,43 @@ class IcecastOutputBackend:
             audio_file = require_local_file(episode)
             with self._lock:
                 self._ensure_stream_process()
-                self._terminate_decoder_locked()
+                old_decoder = self._pop_decoder_locked()
                 self._playback_event = None
-                self._decoder_process = subprocess.Popen(  # noqa: S603
-                    build_ffmpeg_decode_to_pcm_command(
-                        audio_file,
-                        ffmpeg_command=self.ffmpeg_command,
-                        volume=self._status.volume,
-                        sample_rate_hz=self.config.sample_rate_hz,
-                        channels=self._CHANNELS,
-                    ),
-                    stdout=subprocess.PIPE,
-                )
-        except (OSError, ValueError) as exc:
-            self._decoder_process = None
-            self._status = replace(
-                self._status,
-                state="error",
-                connected=self._stream_process is not None,
-                current_episode_identity=episode.identity,
-                error=OutputError(code="backend_start_failed", message=str(exc)),
-            )
-            return
 
-        self._status = replace(
-            self._status,
-            state="playing",
-            connected=True,
-            current_episode_identity=episode.identity,
-            error=None,
-        )
+            self._terminate_decoder_process(old_decoder)
+            decoder_process = subprocess.Popen(  # noqa: S603
+                build_ffmpeg_decode_to_pcm_command(
+                    audio_file,
+                    ffmpeg_command=self.ffmpeg_command,
+                    volume=self._status.volume,
+                    sample_rate_hz=self.config.sample_rate_hz,
+                    channels=self._CHANNELS,
+                ),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            with self._lock:
+                self._decoder_process = decoder_process
+                self._playback_event = None
+                if self._status.state != "error":
+                    self._status = replace(
+                        self._status,
+                        state="playing",
+                        connected=True,
+                        current_episode_identity=episode.identity,
+                        error=None,
+                    )
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            with self._lock:
+                self._decoder_process = None
+                self._status = replace(
+                    self._status,
+                    state="error",
+                    connected=self._stream_process is not None,
+                    current_episode_identity=episode.identity,
+                    error=OutputError(code="backend_start_failed", message=str(exc)),
+                )
+            return
 
     def _ensure_stream_process(self) -> None:
         if self._stream_process is not None and self._stream_process.poll() is None:
@@ -320,13 +327,17 @@ class IcecastOutputBackend:
 
     def _terminate_decoder(self) -> None:
         with self._lock:
-            self._terminate_decoder_locked()
+            process = self._pop_decoder_locked()
+        self._terminate_decoder_process(process)
 
-    def _terminate_decoder_locked(self) -> None:
-        if self._decoder_process is None:
-            return
+    def _pop_decoder_locked(self) -> subprocess.Popen[bytes] | None:
         process = self._decoder_process
         self._decoder_process = None
+        return process
+
+    def _terminate_decoder_process(self, process: subprocess.Popen[bytes] | None) -> None:
+        if process is None:
+            return
         try:
             process.terminate()
             try:
