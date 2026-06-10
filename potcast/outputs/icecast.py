@@ -329,8 +329,12 @@ class IcecastOutputBackend:
         self._decoder_process = None
         try:
             process.terminate()
-            process.wait(timeout=5)
-        except OSError as exc:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired) as exc:
             self._status = replace(
                 self._status,
                 state="error",
@@ -347,8 +351,12 @@ class IcecastOutputBackend:
             if process.stdin is not None:
                 process.stdin.close()
             process.terminate()
-            process.wait(timeout=5)
-        except OSError as exc:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired) as exc:
             self._status = replace(
                 self._status,
                 state="error",

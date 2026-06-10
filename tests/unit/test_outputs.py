@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -46,6 +47,26 @@ class RecordingLauncher:
 class FailingLauncher:
     def launch(self, command: list[str]) -> FakeProcess:
         raise OSError("ffmpeg missing")
+
+
+class SlowStoppingProcess:
+    def __init__(self) -> None:
+        self.terminated = False
+        self.killed = False
+        self.wait_calls = 0
+        self.stdin = None
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls += 1
+        if self.wait_calls == 1:
+            raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=timeout)
+        return 0
 
 
 def episode(path: Path = Path("/data/episodes/history-extra/audio.mp3")) -> Episode:
@@ -254,6 +275,21 @@ def test_icecast_backend_detects_unexpected_process_exit_without_real_subprocess
     assert backend.status().connected is False
     assert backend.status().error is not None
     assert backend.status().error.message == "Output process exited unexpectedly with code 1."
+
+
+def test_icecast_backend_kills_decoder_after_graceful_stop_timeout() -> None:
+    backend = IcecastOutputBackend(IcecastOutputConfig(source_password="secret"))
+    process = SlowStoppingProcess()
+    backend._decoder_process = process  # noqa: SLF001
+
+    backend._terminate_decoder()  # noqa: SLF001
+
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.wait_calls == 2
+    assert backend._decoder_process is None  # noqa: SLF001
+    assert backend.status().state == "stopped"
+    assert backend.status().error is None
 
 
 def test_local_audio_backend_builds_expected_mpv_command() -> None:
