@@ -109,6 +109,51 @@ channels:
     assert config.channels[0].id == "sleep"
 
 
+def test_load_config_accepts_utf8_unicode_text(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+channels:
+  - id: nit
+    name: "Ràdio de la nit"
+    podcasts:
+      - id: historia
+        name: "Història i ciència"
+        feed_url: "https://example.com/historia/rss"
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.channels[0].name == "Ràdio de la nit"
+    assert config.channels[0].podcasts[0].name == "Història i ciència"
+
+
+def test_load_config_reports_yaml_parse_location_and_tab_hint(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        (
+            "channels:\n"
+            "  - id: sleep\n"
+            "    name: Sleep\n"
+            "    podcasts:\n"
+            "      - id: history-extra\n"
+            "        name: History Extra\n"
+            '\tfeed_url: "https://example.com/history-extra/rss"\n'
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(config_path)
+
+    message = str(exc_info.value)
+    assert f"Could not parse YAML config: {config_path}" in message
+    assert "line 7, column 1" in message
+    assert "YAML indentation must use spaces, not tabs" in message
+
+
 def test_example_config_loads() -> None:
     config_path = Path(__file__).resolve().parents[2] / "examples" / "potcast.yaml"
 

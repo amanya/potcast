@@ -8,6 +8,10 @@ potcast --config /path/to/potcast.yaml
 
 See `examples/potcast.yaml` for a complete starting point.
 
+Config files must be UTF-8 YAML. Unicode display names are supported, but YAML
+indentation must use spaces; tabs in indentation are rejected by the YAML parser and
+reported with the failing line and column.
+
 ## Required Fields
 
 - `channels`: list of channel objects.

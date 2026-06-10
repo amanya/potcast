@@ -31,13 +31,15 @@ def load_config(path: str | Path) -> AppConfig:
     config_path = Path(path)
     try:
         raw_text = config_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ConfigError(f"Config file must be UTF-8 text: {config_path}") from exc
     except OSError as exc:
         raise ConfigError(f"Could not read config file: {config_path}") from exc
 
     try:
         raw = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
-        raise ConfigError(f"Could not parse YAML config: {config_path}") from exc
+        raise ConfigError(_format_yaml_error(config_path, exc)) from exc
 
     return parse_config(raw)
 
@@ -58,6 +60,26 @@ def parse_config(raw: Any) -> AppConfig:
         feeds=_parse_feeds(_optional_mapping(root, "feeds")),
         channels=_parse_channels(_required_sequence(root, "channels")),
     )
+
+
+def _format_yaml_error(config_path: Path, exc: yaml.YAMLError) -> str:
+    parts = [f"Could not parse YAML config: {config_path}"]
+
+    problem = getattr(exc, "problem", None)
+    if isinstance(problem, str) and problem:
+        parts.append(problem)
+
+    problem_mark = getattr(exc, "problem_mark", None)
+    if problem_mark is not None:
+        line = getattr(problem_mark, "line", None)
+        column = getattr(problem_mark, "column", None)
+        if isinstance(line, int) and isinstance(column, int):
+            parts.append(f"line {line + 1}, column {column + 1}")
+
+    if problem == "found character '\\t' that cannot start any token":
+        parts.append("YAML indentation must use spaces, not tabs")
+
+    return "; ".join(parts)
 
 
 def _parse_server(raw: Mapping[str, Any]) -> ServerConfig:
