@@ -141,12 +141,14 @@ The runtime creates the configured `outputs.primary` backend. `outputs.enabled` 
 validated for config consistency, but secondary output backends are not started in the
 current implementation.
 
-`IcecastOutputBackend` builds an `ffmpeg` command for the selected local episode and
-streams it to Icecast. `LocalAudioOutputBackend` builds an `mpv` command for the selected
-local episode and audio device. Both backends accept an injected process launcher so unit
-tests can assert command construction and process-completion detection without starting
-real processes. Exit code `0` is treated as normal episode completion. Non-zero exits are
-reported as `backend_process_failed`.
+`IcecastOutputBackend` keeps a persistent `ffmpeg` process connected to Icecast and feeds
+it decoded PCM from the currently selected episode. Episode changes replace the decoder
+process while preserving the Icecast source connection, so listeners do not need to
+reload after `/next` or podcast selection. `LocalAudioOutputBackend` builds an `mpv`
+command for the selected local episode and audio device. Both backends keep command
+construction testable without starting real Icecast, `ffmpeg`, `mpv`, or audio hardware.
+Exit code `0` from the active episode decoder or local player is treated as normal
+episode completion. Non-zero exits are reported as `backend_process_failed`.
 
 ## Adding An Output Backend
 

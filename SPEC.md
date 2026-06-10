@@ -372,7 +372,14 @@ Future backends may include `airplay`, `chromecast`, `bluetooth`, or `home_assis
 
 The Icecast output publishes encoded audio to an Icecast server.
 
-Phase 5 provides direct `ffmpeg` command construction for streaming one selected local episode to Icecast. The backend applies configured host, port, source password, mount, stream metadata, format, bitrate, sample rate, and software volume. Process launching is injected so command construction remains testable without Icecast or `ffmpeg`.
+Phase 5 provides direct `ffmpeg` command construction for streaming selected local
+episodes to Icecast. In the production backend, Potcast keeps a persistent Icecast source
+connection open and swaps the decoded episode audio underneath it. This keeps browser
+and radio clients attached to the same mount during `/next`, `/previous`, channel
+switches, and podcast selection. The backend applies configured host, port, source
+password, mount, stream metadata, format, bitrate, sample rate, and software volume.
+Process launching is injectable for command-construction tests that do not require
+Icecast or `ffmpeg`.
 
 Recommended first-version implementation options:
 
@@ -384,7 +391,8 @@ Liquidsoap is the preferred long-term streaming engine because it is designed fo
 
 For the MVP, either of these approaches is acceptable:
 
-- **Simple backend:** Python controls `ffmpeg` processes directly.
+- **Simple backend:** Python controls `ffmpeg` processes directly and preserves the
+  Icecast source connection across episode changes.
 - **Radio backend:** Python controls station state while Liquidsoap handles continuous streaming.
 
 The implementation should keep the backend interface stable enough that the simple backend can later be replaced with Liquidsoap without changing the HTTP API or YAML channel configuration.

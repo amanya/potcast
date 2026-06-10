@@ -195,7 +195,7 @@ Implement:
 - `IcecastOutputBackend` command construction.
 - `LocalAudioOutputBackend` command construction.
 
-The first implementation can construct and manage subprocesses, but tests should verify command construction with fakes rather than launching `ffmpeg`, Icecast, or `mpv`.
+The first implementation can construct and manage subprocesses, but tests should verify command construction with fakes rather than launching `ffmpeg`, Icecast, or `mpv`. Icecast playback should keep a persistent source connection open across episode changes so browser and radio clients do not need to reconnect after `/next`.
 
 Tests:
 

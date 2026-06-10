@@ -131,8 +131,11 @@ outputs:
     sample_rate_hz: 44100
 ```
 
-Icecast output uses `ffmpeg` to stream the selected local episode file to the Icecast
-source endpoint. Potcast builds an `icecast://source:<password>@<host>:<port><mount>`
+Icecast output uses `ffmpeg` to stream local episode audio to the Icecast source
+endpoint. Potcast keeps the Icecast source connection open while swapping decoded
+episode audio underneath it, so browser and radio clients can stay connected when
+commands such as `/next`, `/previous`, `/channel/<id>`, or `/podcast/<id>` select a new
+episode. Potcast builds an `icecast://source:<password>@<host>:<port><mount>`
 destination, applies software volume with an ffmpeg audio filter, and passes stream
 metadata such as name, description, genre, format, bitrate, and sample rate.
 

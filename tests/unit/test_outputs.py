@@ -5,7 +5,12 @@ from pathlib import Path
 
 from potcast.models import Episode, IcecastOutputConfig, LocalAudioOutputConfig
 from potcast.outputs.base import FakeOutputBackend
-from potcast.outputs.icecast import IcecastOutputBackend, build_ffmpeg_icecast_command
+from potcast.outputs.icecast import (
+    IcecastOutputBackend,
+    build_ffmpeg_decode_to_pcm_command,
+    build_ffmpeg_icecast_command,
+    build_ffmpeg_icecast_stream_command,
+)
 from potcast.outputs.local_audio import LocalAudioOutputBackend, build_mpv_local_audio_command
 
 
@@ -119,6 +124,84 @@ def test_icecast_backend_builds_expected_ffmpeg_command() -> None:
         "-f",
         "mp3",
         "icecast://source:change%20me@icecast.local:8000/potcast.mp3",
+    ]
+
+
+def test_icecast_backend_builds_persistent_stream_command() -> None:
+    config = IcecastOutputConfig(
+        host="icecast.local",
+        port=8000,
+        source_password="secret",
+        mount="/potcast.mp3",
+        name="Potcast",
+        description="Personal podcast radio",
+        genre="Podcast",
+        bitrate_kbps=128,
+        sample_rate_hz=44100,
+    )
+
+    command = build_ffmpeg_icecast_stream_command(config)
+
+    assert command == [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-f",
+        "s16le",
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
+        "-i",
+        "pipe:0",
+        "-vn",
+        "-acodec",
+        "libmp3lame",
+        "-b:a",
+        "128k",
+        "-ar",
+        "44100",
+        "-content_type",
+        "audio/mpeg",
+        "-ice_name",
+        "Potcast",
+        "-ice_description",
+        "Personal podcast radio",
+        "-ice_genre",
+        "Podcast",
+        "-f",
+        "mp3",
+        "icecast://source:secret@icecast.local:8000/potcast.mp3",
+    ]
+
+
+def test_icecast_backend_builds_episode_decoder_command() -> None:
+    command = build_ffmpeg_decode_to_pcm_command(
+        Path("/media/show.mp3"),
+        volume=65,
+        sample_rate_hz=48000,
+        channels=2,
+    )
+
+    assert command == [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-re",
+        "-i",
+        "/media/show.mp3",
+        "-vn",
+        "-filter:a",
+        "volume=0.65",
+        "-f",
+        "s16le",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "pipe:1",
     ]
 
 

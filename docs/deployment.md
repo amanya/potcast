@@ -206,10 +206,12 @@ Startup should serve:
 Commands are intentionally HTTP GET endpoints for first-version integration with phone
 shortcuts, browsers, home automation, and simple media controls.
 
-While the station is playing, Potcast supervises the active `ffmpeg` or `mpv` process and
-automatically advances to the next playable podcast in the active channel when the
-current episode process exits with code `0`. Paused and stopped stations do not
-auto-advance.
+While the station is playing, Potcast supervises the active Icecast episode decoder or
+`mpv` process and automatically advances to the next playable podcast in the active
+channel when the current episode process exits with code `0`. With Icecast, Potcast keeps
+the source connection to the mount open across manual skips and automatic episode
+changes, so browser and radio clients can remain connected. Paused and stopped stations
+do not auto-advance.
 
 If the backend cannot start, `/status` reports `output.state: "error"` with
 `backend_start_failed`. If the process exits unexpectedly with a non-zero code, `/status`

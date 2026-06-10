@@ -8,7 +8,9 @@ The current service runs one configured primary output backend. Feed refreshes k
 episode files up to date; station commands select the active channel or podcast and send
 the selected local episode to the output backend. While the station is playing, Potcast
 also watches the active output process and advances to the next playable podcast when an
-episode finishes normally. Backend startup failures and unexpected output process exits
+episode finishes normally. The Icecast backend keeps its source connection open across
+skips and podcast changes so browser listeners do not need to reload the stream after
+`/next`. Backend startup failures and unexpected output process exits
 are surfaced in `/status` as structured output and playback supervisor errors, and the
 station is left idle instead of immediately relaunching the same failing episode. The
 supervisor schedules one delayed automatic retry and exposes whether recovery is
