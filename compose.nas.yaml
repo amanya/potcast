@@ -1,0 +1,25 @@
+services:
+  potcast:
+    image: ghcr.io/amanya/potcast:latest
+    restart: unless-stopped
+    depends_on:
+      - icecast
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./potcast.yaml:/config/potcast.yaml:ro
+      - potcast-data:/data
+
+  icecast:
+    image: moul/icecast
+    restart: unless-stopped
+    environment:
+      ICECAST_SOURCE_PASSWORD: change-me
+      ICECAST_ADMIN_PASSWORD: change-me
+      ICECAST_RELAY_PASSWORD: change-me
+      ICECAST_HOSTNAME: nas.local
+    ports:
+      - "8000:8000"
+
+volumes:
+  potcast-data:

@@ -65,6 +65,16 @@ Potcast listens on `http://localhost:8080`. The Icecast stream example is
 `http://localhost:8000/potcast.mp3` after you replace the sample feed URLs and episodes
 have downloaded.
 
+For a NAS or home server, use the published image from GitHub Container Registry:
+
+```bash
+docker compose -f compose.nas.yaml pull
+docker compose -f compose.nas.yaml up -d
+```
+
+The NAS compose file expects a real `potcast.yaml` beside it and stores runtime data in
+the `potcast-data` Docker volume.
+
 ## Configuration
 
 Potcast uses one YAML file. The most important sections are `channels`, `outputs`,

@@ -60,6 +60,60 @@ curl http://localhost:8080/feeds/refresh
 `/feeds/refresh` returns `202` when a background refresh is accepted. It returns `200`
 with `accepted: false` and reason `already_running` when another refresh is still active.
 
+## NAS Deployment From GHCR
+
+The repository publishes Docker images to GitHub Container Registry at:
+
+```text
+ghcr.io/amanya/potcast
+```
+
+The image is built for `linux/amd64` and `linux/arm64`, which covers typical Intel NAS
+hosts and Raspberry Pi or ARM home-server hosts. The workflow publishes:
+
+- `latest` from the `main` branch.
+- The branch name for branch builds.
+- Git tag versions such as `v0.1.0`, `0.1.0`, and `0.1`.
+
+On the NAS, create a deployment directory containing:
+
+```text
+compose.yaml
+potcast.yaml
+```
+
+Use `compose.nas.yaml` from this repository as the starting `compose.yaml`.
+
+Before starting the stack:
+
+- Copy `examples/potcast.yaml` to `potcast.yaml`.
+- Replace the example feed URLs with real podcast RSS feeds.
+- Change every `change-me` Icecast password in both `compose.yaml` and `potcast.yaml`.
+- Set `outputs.icecast.public_url` to the NAS listener URL, for example
+  `http://nas.local:8000/potcast.mp3`.
+- Set `ICECAST_HOSTNAME` to the NAS hostname or IP address.
+
+Start or update the stack:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Check it:
+
+```bash
+curl http://nas.local:8080/health
+curl http://nas.local:8080/status
+curl http://nas.local:8080/feeds/refresh
+```
+
+To pin a specific release instead of tracking `latest`, change the image tag:
+
+```yaml
+image: ghcr.io/amanya/potcast:v0.1.0
+```
+
 ## Docker Image
 
 Build directly:
