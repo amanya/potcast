@@ -89,6 +89,8 @@ must be unique across the whole config in this first version.
 ## Deployment
 
 See `docs/deployment.md` for Docker Compose, Icecast, and Raspberry Pi local audio notes.
+An optional Raspberry Pi Icecast-to-FM relay installer lives in
+`extras/rpitx-icecast-fm/`.
 See `docs/architecture.md` for component boundaries and testing strategy.
 
 ## Development

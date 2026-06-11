@@ -181,6 +181,51 @@ services:
 Exact audio device names depend on the Pi OS image and audio stack. Use an `mpv` device
 name that works on the host, then copy that value into `outputs.local_audio.device`.
 
+## Raspberry Pi Icecast FM Relay
+
+Potcast can also feed a small Raspberry Pi FM relay: Potcast streams to Icecast, and a
+separate Raspberry Pi receives that Icecast URL and retransmits it through
+`rpitx`/`pifmrds` for a nearby FM receiver. This is an optional extra, not a Potcast
+output backend, so the default test suite does not require radio hardware.
+
+The reproducible installer is provided at:
+
+```text
+extras/rpitx-icecast-fm/install-rpitx-icecast-fm.sh
+```
+
+The default values reproduce the current setup:
+
+- Icecast URL: `http://192.168.68.5:8022/potcast.mp3`
+- FM frequency: `107.9`
+- Mono audio
+- Compression/gain filter:
+  `acompressor=threshold=0.08:ratio=4:attack=5:release=100:makeup=14,alimiter=limit=0.99`
+- RDS enabled with `PS=POTCAST`
+- Timezone: `Europe/Madrid`
+- systemd service: `icecast-fm.service`
+- rpitx boot stability settings: `gpu_freq=250` and `force_turbo=1`
+
+Transmit only on frequencies and power levels you are authorized to use.
+
+Install it on a new Raspberry Pi like this:
+
+```bash
+scp extras/rpitx-icecast-fm/install-rpitx-icecast-fm.sh pi@raspberrypi.local:/home/pi/
+ssh pi@raspberrypi.local
+chmod +x install-rpitx-icecast-fm.sh
+sudo -v
+./install-rpitx-icecast-fm.sh
+```
+
+Override values during install with environment variables:
+
+```bash
+FREQ_MHZ="88.1" PS="MYRADIO" ./install-rpitx-icecast-fm.sh
+```
+
+See `extras/rpitx-icecast-fm/README.md` for all installer options and service operations.
+
 ## Runtime Storage
 
 Potcast writes runtime metadata under `storage.data_dir`:
