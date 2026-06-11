@@ -1,5 +1,7 @@
 # Potcast
 
+*/potcast/*, from Catalan *pot*: a junky device turned podcast appliance.
+
 Potcast is a personal podcast radio service. It monitors configured podcast RSS feeds,
 keeps the latest playable episode for each podcast, groups podcasts into channels, and
 lets simple HTTP commands control playback through Icecast or Raspberry Pi local audio.
