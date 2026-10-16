@@ -54,6 +54,7 @@ def parse_feed(content: str | bytes) -> FeedParseResult:
     return FeedParseResult(
         ok=True,
         latest_episode=latest_episode,
+        episodes=tuple({episode.identity: episode for episode in playable}.values()),
         feed_title=_optional_text(feed.get("title")),
         entry_count=len(entries),
         playable_entry_count=len(playable),

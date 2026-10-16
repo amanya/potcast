@@ -6,7 +6,7 @@ Potcast is a lightweight personal podcast radio service designed to run unattend
 NAS, home server, or Raspberry Pi and deliver podcast audio to a configured output.
 
 The service maintains a curated set of podcast feeds grouped into user-defined channels.
-It monitors those feeds, keeps the latest available episode for each podcast, sends the
+It monitors those feeds, keeps the latest available episode and optional recent episodes for each podcast, sends the
 selected episode from the active channel to the output backend, and exposes simple HTTP
 commands for station control.
 
@@ -19,7 +19,7 @@ commands for station control.
 - Organize podcasts into channels.
 - Continuously monitor podcast RSS feeds.
 - Download the newest episode for each configured podcast.
-- Replace the previously downloaded episode from the same podcast when a newer one appears.
+- Retain a configurable publication window per channel or podcast, with latest-only as the default.
 - Deliver selected podcast audio through a configured output backend.
 - Support Icecast-compatible streaming.
 - Support Raspberry Pi local audio output.
@@ -264,11 +264,11 @@ Behavior:
 1. Load configured podcasts from YAML.
 2. Poll each podcast RSS feed on the configured interval.
 3. Parse the feed.
-4. Select the newest playable episode.
+4. Select the newest playable episode and any episodes in the configured retention window.
 5. Compare it with the currently known episode for that podcast.
 6. If the episode is new, download its audio file.
 7. Verify that the downloaded file exists and has non-zero size.
-8. Replace the previous local episode file for that podcast.
+8. Keep the configured collection and remove expired files after saving metadata.
 9. Update runtime metadata.
 
 The replacement should be atomic:
@@ -313,7 +313,7 @@ Station sequence:
 
 1. Select active channel.
 2. Select active podcast within that channel.
-3. Send the downloaded latest episode for that podcast to the configured output.
+3. Send the next retained episode for that podcast, oldest to newest, to the output.
 4. HTTP commands can advance to another podcast in the same channel or switch channels.
 5. Output supervision advances automatically when an episode finishes normally while the
    station is playing.
@@ -966,7 +966,7 @@ The first usable version is complete when:
 - Invalid config errors are clear and actionable.
 - The HTTP server exposes `/health` and `/status`.
 - The feed monitor downloads the latest episode for each configured podcast.
-- A new episode replaces the previous local file for the same podcast.
+- A new episode replaces the previous local file by default; configured retention keeps recent episodes.
 - Station output starts automatically when `start_on_boot` is enabled.
 - Potcast can publish an Icecast-compatible stream.
 - Potcast can play through local audio when `local_audio` is enabled.
@@ -997,3 +997,48 @@ The first usable version is complete when:
 - Home Assistant media player output.
 - Multiple simultaneous outputs.
 - Text-to-speech status announcements.
+
+## Episode Retention
+
+Set `channels[].retention_days` to a positive integer to keep episodes published within
+that many days (a rolling UTC window, inclusive of its boundary). A podcast's
+`retention_days` overrides its channel's value; omitted or `null` inherits the channel.
+If neither has a value, only the latest episode is kept, as before.
+
+```yaml
+channels:
+  - id: history
+    name: History
+    retention_days: 14
+    podcasts:
+      - id: twice-weekly
+        name: Twice Weekly
+        feed_url: "https://example.com/twice-weekly/rss"
+      - id: weekly
+        name: Weekly
+        feed_url: "https://example.com/weekly/rss"
+        retention_days: 21
+```
+
+On the next refresh, Potcast downloads all playable episodes in the window still
+available in the RSS feed, deduplicated by GUID or enclosure URL. Already downloaded
+episodes remain eligible even if removed from the feed. The latest downloaded episode
+is always kept, even outside the window. Undated episodes are kept only when selected
+as the latest episode; other undated feed entries are excluded from the window.
+
+Podcast rotation (including shuffle) stays unchanged. Each visit to a podcast selects
+its next retained episode from oldest to newest, wrapping around after the newest.
+Manual next and automatic completion both advance the rotation. Selecting a podcast or
+channel also starts the next episode for that podcast; previous navigates podcast
+history and selects that podcast's next episode, rather than undoing episode history.
+Play, pause/resume, output recovery, and retries retain the selected episode. The current
+episode identity and per-podcast rotation cursors persist across restarts. This is a
+continuous radio rotation, not a permanent listened/unlistened queue.
+
+Cleanup runs after a successful refresh and successful downloads. Feed/download failures
+preserve the previous collection. The currently selected episode is protected from
+cleanup until selection changes, including while paused or stopped. Removing retention
+returns to latest-only on the next successful refresh, with that same protection.
+Media downloads are validated and atomically moved before collection metadata is saved;
+obsolete files are then removed. A file cleanup failure is logged and may leave an
+unused file on disk. Publication dates determine retention, not download time.

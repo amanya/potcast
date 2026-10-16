@@ -235,6 +235,7 @@ def _parse_channels(raw: Sequence[Any]) -> tuple[ChannelConfig, ...]:
                     id=podcast_id,
                     name=_string(podcast, "name", path=podcast_path),
                     feed_url=_string(podcast, "feed_url", path=podcast_path),
+                    retention_days=_retention_days(podcast, podcast_path),
                 )
             )
 
@@ -243,6 +244,7 @@ def _parse_channels(raw: Sequence[Any]) -> tuple[ChannelConfig, ...]:
                 id=channel_id,
                 name=_string(channel, "name", path=path),
                 podcasts=tuple(podcasts),
+                retention_days=_retention_days(channel, path),
             )
         )
 
@@ -340,3 +342,10 @@ def _field_path(key: str, path: str | None) -> str:
     if path is None:
         return key
     return f"{path}.{key}"
+
+
+def _retention_days(raw: Mapping[str, Any], path: str) -> int | None:
+    days = _optional_integer(raw, "retention_days")
+    if days is not None and days <= 0:
+        raise ConfigError(f"{path}.retention_days must be a positive integer")
+    return days

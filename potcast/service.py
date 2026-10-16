@@ -6,8 +6,11 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
+from functools import wraps
+from threading import RLock
+from typing import Concatenate, ParamSpec, Protocol, TypeVar
 
+from potcast.episodes import downloaded_episodes, next_episode
 from potcast.models import (
     ChannelConfig,
     CommandError,
@@ -27,6 +30,19 @@ from potcast.station import Randomizer, StationSelector
 
 Clock = Callable[[], datetime]
 LOGGER = logging.getLogger(__name__)
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _serialized(
+    method: Callable[Concatenate[StationService, P], R],
+) -> Callable[Concatenate[StationService, P], R]:
+    @wraps(method)
+    def wrapped(self: StationService, /, *args: P.args, **kwargs: P.kwargs) -> R:
+        with self._media_lock:
+            return method(self, *args, **kwargs)
+
+    return wrapped
 
 
 class StationStateStore(Protocol):
@@ -77,7 +93,9 @@ class StationService:
         randomizer: Randomizer | None = None,
         retry_policy: OutputRetryPolicy | None = None,
         clock: Clock | None = None,
+        media_lock: RLock | None = None,
     ) -> None:
+        self._media_lock = media_lock or RLock()
         self.channels = tuple(channels)
         self.station = station
         self.state_store = state_store
@@ -87,6 +105,7 @@ class StationService:
         self._clock = clock or _utc_now
         self._retry_state = _OutputRetryState()
 
+    @_serialized
     def play(self) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
@@ -99,6 +118,7 @@ class StationService:
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def pause(self) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
@@ -109,11 +129,13 @@ class StationService:
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def toggle(self) -> StationCommandResult:
         if self._load_state().station_status == "playing":
             return self.pause()
         return self.play()
 
+    @_serialized
     def stop(self) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
@@ -129,28 +151,37 @@ class StationService:
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def next(self) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
-        state = self._selector(downloads).next_podcast(state)
+        state = replace(
+            self._selector(downloads).next_podcast(state), current_episode_identity=None
+        )
         state = self._play_selected(state, downloads)
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def previous(self) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
-        state = self._selector(downloads).previous_podcast(state)
+        state = replace(
+            self._selector(downloads).previous_podcast(state), current_episode_identity=None
+        )
         state = self._play_selected(state, downloads)
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def next_channel(self) -> StationCommandResult:
         return self._change_channel(offset=1)
 
+    @_serialized
     def previous_channel(self) -> StationCommandResult:
         return self._change_channel(offset=-1)
 
+    @_serialized
     def select_channel(self, channel_id: str) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
@@ -171,11 +202,13 @@ class StationService:
             current_channel_id=channel.id,
             current_podcast_id=podcast.id if podcast is not None else None,
             previous_podcast_ids=(),
+            current_episode_identity=None,
         )
         state = self._play_selected(state, downloads)
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def select_podcast(self, podcast_id: str) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
@@ -206,11 +239,13 @@ class StationService:
             current_channel_id=channel.id if channel is not None else None,
             current_podcast_id=podcast.id,
             previous_podcast_ids=(),
+            current_episode_identity=None,
         )
         state = self._play_selected(state, downloads)
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def set_volume(self, volume: int) -> StationCommandResult:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
@@ -229,12 +264,14 @@ class StationService:
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def status(self) -> StationStatus:
         state = self._load_state()
         downloads = self.state_store.load_download_metadata()
         state = self._activate(state, downloads)
         return self._status(state, downloads)
 
+    @_serialized
     def recover_output(self) -> StationCommandResult:
         """Clear an output error and retry the selected episode once."""
 
@@ -276,6 +313,7 @@ class StationService:
         self._save_state(state)
         return self._result(state, downloads)
 
+    @_serialized
     def advance_if_finished(self) -> StationCommandResult:
         """Advance once when the active output reports normal episode completion."""
 
@@ -305,7 +343,9 @@ class StationService:
             self._save_state(state)
             return self._result(state, downloads)
 
-        state = self._selector(downloads).next_podcast(state)
+        state = replace(
+            self._selector(downloads).next_podcast(state), current_episode_identity=None
+        )
         state = self._play_selected(state, downloads)
         self._save_state(state)
         return self._result(state, downloads)
@@ -315,6 +355,7 @@ class StationService:
         downloads = self.state_store.load_download_metadata()
         selector = self._selector(downloads)
         state = selector.next_channel(state) if offset > 0 else selector.previous_channel(state)
+        state = replace(state, current_episode_identity=None)
         state = self._play_selected(state, downloads)
         self._save_state(state)
         return self._result(state, downloads)
@@ -330,7 +371,10 @@ class StationService:
         state: RuntimeState,
         downloads: Mapping[str, DownloadMetadata],
     ) -> RuntimeState:
-        return self._selector(downloads).activate(state)
+        activated = self._selector(downloads).activate(state)
+        if activated.current_podcast_id != state.current_podcast_id:
+            activated = replace(activated, current_episode_identity=None)
+        return activated
 
     def _selector(self, downloads: Mapping[str, DownloadMetadata]) -> StationSelector:
         return StationSelector(
@@ -357,6 +401,7 @@ class StationService:
                 playback_supervisor_error=None,
             )
 
+        state = replace(state, current_episode_identity=episode.identity)
         self.output.play_episode(episode)
         output_status = self.output.status()
         if output_status.state == "error":
@@ -374,7 +419,12 @@ class StationService:
             )
             return blocked_state
         self._reset_retry()
-        return replace(state, station_status="playing", playback_supervisor_error=None)
+        cursors = dict(state.episode_cursors)
+        if state.current_podcast_id is not None:
+            cursors[state.current_podcast_id] = episode.identity
+        return replace(
+            state, station_status="playing", playback_supervisor_error=None, episode_cursors=cursors
+        )
 
     def _is_playing_selected(
         self,
@@ -584,7 +634,11 @@ class StationService:
         download = downloads.get(state.current_podcast_id)
         if download is None or download.status != "downloaded":
             return None
-        return _episode_from_download(download)
+        episodes = downloaded_episodes(download)
+        for episode in episodes:
+            if episode.identity == state.current_episode_identity:
+                return episode
+        return next_episode(episodes, state.episode_cursors.get(state.current_podcast_id))
 
     def _playable_podcast_ids(
         self,
@@ -625,19 +679,6 @@ class StationService:
         if retry_attempt is not None:
             context["retry_attempt"] = retry_attempt
         return context
-
-
-def _episode_from_download(download: DownloadMetadata) -> Episode:
-    return Episode(
-        title=download.title or download.episode_identity,
-        identity=download.episode_identity,
-        guid=None,
-        published_at=None,
-        media_url=download.media_url,
-        media_type=download.media_type,
-        local_file=download.local_file,
-        downloaded_at=download.downloaded_at,
-    )
 
 
 def _utc_now() -> datetime:

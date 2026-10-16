@@ -16,7 +16,7 @@ Core responsibilities:
 - Load one YAML configuration file.
 - Group podcasts into channels.
 - Monitor RSS feeds.
-- Keep the latest playable episode per podcast.
+- Keep the latest playable episode per podcast, plus the configured recent episode window.
 - Replace older local episode files safely.
 - Run and control station playback.
 - Send audio to output backends such as Icecast or Raspberry Pi local audio.

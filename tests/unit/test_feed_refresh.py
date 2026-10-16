@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -116,7 +117,9 @@ def test_refresh_does_not_download_when_current_episode_is_unchanged() -> None:
     service.refresh_now()
 
     assert downloader.calls == []
-    assert store.downloads["history-extra"] == existing
+    assert store.downloads["history-extra"] == replace(
+        existing, published_at=episode("episode-1").published_at
+    )
     assert store.feeds["history-extra"].status == "ok"
 
 

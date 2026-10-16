@@ -193,3 +193,48 @@ Supported enclosure media types are:
 - `audio/x-m4a`
 - `audio/aac`
 - `audio/ogg`
+
+## Episode Retention
+
+Set `channels[].retention_days` to a positive integer to keep episodes published within
+that many days (a rolling UTC window, inclusive of its boundary). A podcast's
+`retention_days` overrides its channel's value; omitted or `null` inherits the channel.
+If neither has a value, only the latest episode is kept, as before.
+
+```yaml
+channels:
+  - id: history
+    name: History
+    retention_days: 14
+    podcasts:
+      - id: twice-weekly
+        name: Twice Weekly
+        feed_url: "https://example.com/twice-weekly/rss"
+      - id: weekly
+        name: Weekly
+        feed_url: "https://example.com/weekly/rss"
+        retention_days: 21
+```
+
+On the next refresh, Potcast downloads all playable episodes in the window still
+available in the RSS feed, deduplicated by GUID or enclosure URL. Already downloaded
+episodes remain eligible even if removed from the feed. The latest downloaded episode
+is always kept, even outside the window. Undated episodes are kept only when selected
+as the latest episode; other undated feed entries are excluded from the window.
+
+Podcast rotation (including shuffle) stays unchanged. Each visit to a podcast selects
+its next retained episode from oldest to newest, wrapping around after the newest.
+Manual next and automatic completion both advance the rotation. Selecting a podcast or
+channel also starts the next episode for that podcast; previous navigates podcast
+history and selects that podcast's next episode, rather than undoing episode history.
+Play, pause/resume, output recovery, and retries retain the selected episode. The current
+episode identity and per-podcast rotation cursors persist across restarts. This is a
+continuous radio rotation, not a permanent listened/unlistened queue.
+
+Cleanup runs after a successful refresh and successful downloads. Feed/download failures
+preserve the previous collection. The currently selected episode is protected from
+cleanup until selection changes, including while paused or stopped. Removing retention
+returns to latest-only on the next successful refresh, with that same protection.
+Media downloads are validated and atomically moved before collection metadata is saved;
+obsolete files are then removed. A file cleanup failure is logged and may leave an
+unused file on disk. Publication dates determine retention, not download time.

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Protocol
 
 import httpx
 
+from potcast.episodes import chronological, downloaded_episodes
 from potcast.feeds import parse_feed
 from potcast.models import (
     ChannelConfig,
@@ -110,7 +112,11 @@ class FeedRefreshService:
         parser: FeedParser = parse_feed,
         clock: Clock | None = None,
         background_starter: BackgroundStarter | None = None,
+        media_lock: threading.RLock | None = None,
+        protected_episode: Callable[[], tuple[str | None, str | None]] | None = None,
     ) -> None:
+        self._media_lock = media_lock or threading.RLock()
+        self._protected_episode = protected_episode or (lambda: (None, None))
         self.channels = tuple(channels)
         self.state_store = state_store
         self.fetcher = fetcher
@@ -211,7 +217,6 @@ class FeedRefreshService:
                 failed_count += 1
 
             self.state_store.save_feed_metadata(feed_metadata)
-            self.state_store.save_download_metadata(downloads)
 
         return FeedRefreshSummary(
             status="failed" if failed_count and failed_count == checked_count else "ok",
@@ -270,18 +275,38 @@ class FeedRefreshService:
             )
             return "unchanged"
 
-        if previous_download is not None and previous_download.episode_identity == episode.identity:
-            feed_metadata[podcast.id] = _ok_feed_metadata(
-                podcast,
-                result,
-                checked_at,
-                _episode_with_download(episode, previous_download),
+        days = self._retention_days(podcast)
+        cutoff = checked_at - timedelta(days=days) if days is not None else None
+        candidates = {
+            e.identity: e
+            for e in (result.episodes or (episode,))
+            if (
+                e.identity == episode.identity
+                or (cutoff is not None and e.published_at is not None and e.published_at >= cutoff)
             )
-            return "unchanged"
-
+        }
+        cached = (
+            {e.identity: e for e in downloaded_episodes(previous_download)}
+            if previous_download is not None
+            else {}
+        )
+        available = dict(cached)
+        staged: list[Episode] = []
         try:
-            download = self.downloader.replace_episode(podcast.id, episode, previous_download)
+            for identity, candidate in candidates.items():
+                existing = available.get(identity)
+                if existing is not None and existing.local_file is not None:
+                    # Feed dates can repair legacy metadata without downloading again.
+                    available[identity] = replace(existing, published_at=candidate.published_at)
+                    continue
+                download = self.downloader.replace_episode(podcast.id, candidate)
+                ready = _episode_with_download(candidate, download)
+                available[identity] = ready
+                staged.append(ready)
         except Exception as exc:
+            for ready in staged:
+                if ready.local_file is not None:
+                    _remove_obsolete(ready.local_file)
             feed_metadata[podcast.id] = _failed_feed_metadata(
                 podcast,
                 previous_feed,
@@ -292,14 +317,58 @@ class FeedRefreshService:
             )
             return "failed"
 
-        downloads[podcast.id] = download
-        feed_metadata[podcast.id] = _ok_feed_metadata(
-            podcast,
-            result,
-            checked_at,
-            _episode_with_download(episode, download),
-        )
-        return "updated"
+        latest = available[episode.identity]
+        # A truncated feed must not replace a newer, already downloaded episode.
+        if previous_download is not None and previous_download.published_at is not None:
+            previous_latest = available[previous_download.episode_identity]
+            if latest.published_at is None or previous_download.published_at > latest.published_at:
+                latest = previous_latest
+
+        with self._media_lock:
+            protected_podcast, protected_identity = self._protected_episode()
+            kept = tuple(
+                e
+                for e in available.values()
+                if (
+                    e.identity == latest.identity
+                    or (podcast.id == protected_podcast and e.identity == protected_identity)
+                    or (
+                        cutoff is not None
+                        and e.published_at is not None
+                        and e.published_at >= cutoff
+                    )
+                )
+            )
+            assert latest.local_file is not None and latest.downloaded_at is not None
+            downloads[podcast.id] = DownloadMetadata(
+                podcast_id=podcast.id,
+                episode_identity=latest.identity,
+                media_url=latest.media_url,
+                media_type=latest.media_type,
+                local_file=latest.local_file,
+                downloaded_at=latest.downloaded_at,
+                title=latest.title,
+                published_at=latest.published_at,
+                retained_episodes=chronological(
+                    tuple(e for e in kept if e.identity != latest.identity)
+                ),
+            )
+            # Commit metadata before deleting files, while selection is excluded.
+            self.state_store.save_download_metadata(downloads)
+            kept_ids = {e.identity for e in kept}
+            for identity, obsolete in cached.items():
+                if identity not in kept_ids and obsolete.local_file is not None:
+                    _remove_obsolete(obsolete.local_file)
+        feed_metadata[podcast.id] = _ok_feed_metadata(podcast, result, checked_at, latest)
+        return "updated" if staged else "unchanged"
+
+    def _retention_days(self, podcast: PodcastConfig) -> int | None:
+        if podcast.retention_days is not None:
+            return podcast.retention_days
+        for channel in self.channels:
+            if podcast in channel.podcasts:
+                return channel.retention_days
+        return None
 
     def _begin_refresh(self) -> bool:
         with self._lock:
@@ -392,3 +461,10 @@ def _thread_starter(target: Callable[[], None]) -> None:
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _remove_obsolete(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logging.getLogger(__name__).warning("Could not remove obsolete episode: %s", path)

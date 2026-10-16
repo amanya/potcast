@@ -72,6 +72,7 @@ class AtomicEpisodeDownloader:
             local_file=final_path,
             downloaded_at=self._clock(),
             title=episode.title,
+            published_at=episode.published_at,
         )
 
 

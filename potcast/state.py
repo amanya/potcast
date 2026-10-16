@@ -120,6 +120,8 @@ def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
 
 def _runtime_state_to_json(state: RuntimeState) -> dict[str, Any]:
     return {
+        "current_episode_identity": state.current_episode_identity,
+        "episode_cursors": state.episode_cursors,
         "station_status": state.station_status,
         "current_channel_id": state.current_channel_id,
         "current_podcast_id": state.current_podcast_id,
@@ -131,6 +133,8 @@ def _runtime_state_to_json(state: RuntimeState) -> dict[str, Any]:
 
 def _runtime_state_from_json(raw: Mapping[str, Any]) -> RuntimeState:
     return RuntimeState(
+        current_episode_identity=_optional_string(raw, "current_episode_identity"),
+        episode_cursors=_string_map(raw, "episode_cursors"),
         station_status=_string(raw, "station_status", default="stopped"),
         current_channel_id=_optional_string(raw, "current_channel_id"),
         current_podcast_id=_optional_string(raw, "current_podcast_id"),
@@ -200,6 +204,8 @@ def _download_metadata_to_json(metadata: DownloadMetadata) -> dict[str, Any]:
         "downloaded_at": _datetime_to_json(metadata.downloaded_at),
         "status": metadata.status,
         "title": metadata.title,
+        "published_at": _datetime_to_json(metadata.published_at),
+        "retained_episodes": [_episode_to_json(e) for e in metadata.retained_episodes],
     }
 
 
@@ -217,6 +223,8 @@ def _download_metadata_from_json(raw: Mapping[str, Any]) -> DownloadMetadata:
         downloaded_at=downloaded_at,
         status=_string(raw, "status", default="downloaded"),
         title=_optional_string(raw, "title"),
+        published_at=_optional_datetime(raw, "published_at"),
+        retained_episodes=_retained_episodes(raw),
     )
 
 
@@ -315,3 +323,19 @@ def _string_tuple(raw: Mapping[str, Any], key: str) -> tuple[str, ...]:
             raise StorageError(f"{key} must be a list of strings")
         result.append(item)
     return tuple(result)
+
+
+def _string_map(raw: Mapping[str, Any], key: str) -> dict[str, str]:
+    value = raw.get(key, {})
+    if not isinstance(value, dict) or any(
+        not isinstance(k, str) or not isinstance(v, str) for k, v in value.items()
+    ):
+        raise StorageError(f"{key} must be an object of strings")
+    return cast(dict[str, str], value)
+
+
+def _retained_episodes(raw: Mapping[str, Any]) -> tuple[Episode, ...]:
+    value = raw.get("retained_episodes", [])
+    if not isinstance(value, list):
+        raise StorageError("retained_episodes must be a list")
+    return tuple(_episode_from_json(_object_value(e, "retained_episodes")) for e in value)

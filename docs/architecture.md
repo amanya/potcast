@@ -56,7 +56,7 @@ Runtime metadata is stored as UTF-8 JSON under `storage.data_dir`:
 - `state.json`: station status, active channel, active podcast, volume, previous history,
   and the last playback supervisor output error when one has blocked auto-advance.
 - `feeds.json`: feed status and latest episode metadata.
-- `downloads.json`: local media file and episode identity per podcast.
+- `downloads.json`: latest local episode and the retained episode collection per podcast.
 
 Downloaded media is stored below `storage.episodes_dir` in per-podcast directories.
 Filenames are stable and filesystem-safe: the podcast ID is sanitized, the episode
@@ -66,10 +66,10 @@ removing the previous episode.
 
 ## Feed Refresh
 
-`FeedRefreshService` loads configured podcasts, fetches each RSS or Atom feed, parses the
-newest playable enclosure, and downloads only when the newest episode identity differs
-from the current download metadata. Episode identity prefers RSS `guid` and falls back to
-the enclosure URL.
+`FeedRefreshService` loads configured podcasts, fetches each RSS or Atom feed, parses
+playable enclosures, and downloads missing episodes in the configured retention window,
+always including the latest. Without retention it selects only the latest episode.
+Episode identity prefers RSS `guid` and falls back to the enclosure URL.
 
 Feed fetch, parse, and download failures update structured feed metadata while preserving
 the previous feed episode and downloaded media. Supported media types are `audio/mpeg`,
@@ -180,3 +180,19 @@ The usual change set for a backend is:
 
 Avoid coupling the backend to Flask routes or station selection. It should only receive
 selected local episodes and volume through the shared output interface.
+
+## Retained episodes and playback cursors
+
+`downloads.json` remains keyed by podcast ID. Each entry describes the latest episode
+and adds nullable `published_at` and a flat `retained_episodes` array of other downloaded
+Episode objects (with local paths and timestamps). `state.json` adds nullable
+`current_episode_identity` and `episode_cursors`, a podcast-ID-to-last-selected-identity
+object. Older JSON files load with empty collections/cursors; no manual migration is needed.
+Publication dates missing in legacy downloads are recovered from RSS during refresh.
+
+`episodes.py` provides collection conversion and chronological rotation without I/O.
+The station service serializes commands and supervision with an injected reentrant lock.
+The feed service uses the same lock only when committing collection metadata and
+pruning files, so network fetches and downloads do not block station commands. The
+runtime injects a callback identifying the current selection to protect it during cleanup.
+Failed download batches discard staged new files and preserve the previous collection.

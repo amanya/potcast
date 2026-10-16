@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<rss version="2.0"><channel><title>History</title>
+<item><title>Latest</title><guid>new</guid><pubDate>Fri, 16 Oct 2026 12:00:00 GMT</pubDate><enclosure url="https://example.com/new.mp3" type="audio/mpeg" /></item>
+<item><title>Earlier</title><guid>middle</guid><pubDate>Mon, 12 Oct 2026 12:00:00 GMT</pubDate><enclosure url="https://example.com/middle.mp3" type="audio/mpeg" /></item>
+<item><title>Earlier duplicate</title><guid>middle</guid><pubDate>Mon, 12 Oct 2026 12:00:00 GMT</pubDate><enclosure url="https://example.com/middle.mp3" type="audio/mpeg" /></item>
+<item><title>Boundary</title><guid>boundary</guid><pubDate>Fri, 02 Oct 2026 12:00:00 GMT</pubDate><enclosure url="https://example.com/boundary.mp3" type="audio/mpeg" /></item>
+<item><title>Expired</title><guid>expired</guid><pubDate>Thu, 01 Oct 2026 12:00:00 GMT</pubDate><enclosure url="https://example.com/expired.mp3" type="audio/mpeg" /></item>
+<item><title>Undated</title><guid>undated</guid><enclosure url="https://example.com/undated.mp3" type="audio/mpeg" /></item>
+<item><title>Video</title><guid>video</guid><pubDate>Fri, 16 Oct 2026 13:00:00 GMT</pubDate><enclosure url="https://example.com/video.mp4" type="video/mp4" /></item>
+</channel></rss>

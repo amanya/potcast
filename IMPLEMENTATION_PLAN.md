@@ -294,8 +294,8 @@ Implement:
 
 Behavior:
 
-- Feed refreshes fetch each configured RSS feed, parse the newest playable episode, and
-  atomically download only when the newest episode differs from the current download.
+- Feed refreshes fetch each configured RSS feed and atomically download missing playable
+  episodes in the retention window (latest-only when retention is not configured).
 - Feed fetch, parse, and download failures update structured status while preserving the
   previous good feed episode metadata and download metadata.
 - `/feeds/refresh` starts work in the background and returns before downloads complete.
@@ -388,3 +388,14 @@ For changes touching feed parsing:
 12. Documentation polish.
 
 This order keeps the hard-to-test operational pieces near the end, after the core business logic is already covered.
+
+## 16. Episode Retention (implemented)
+
+- Optional positive `retention_days` per channel, overridden per podcast.
+- RSS backfill within a publication window and identity deduplication.
+- Backward-compatible persisted episode collections and playback cursors.
+- Oldest-to-newest episode rotation within the existing podcast rotation.
+- Commit metadata before cleanup; preserve collections on failed refreshes and protect
+  selected media using the shared station/cleanup lock.
+- Verify configuration, RSS fixtures, retention boundaries, failures, cleanup, persisted
+  state, station rotation, and HTTP status with fakes and temporary directories.

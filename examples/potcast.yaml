@@ -42,6 +42,7 @@ feeds:
   user_agent: "Potcast/0.1.0"
 
 channels:
+  # Add retention_days: 14 to a channel (or podcast) to retain recent episodes.
   - id: "sleep"
     name: "Sleep"
     podcasts:

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
+from threading import RLock
 from typing import Protocol
 
 from flask import Flask
@@ -119,12 +120,14 @@ def build_runtime(
     state_store = JsonStateStore(config.storage.data_dir)
     _initialize_runtime_state(state_store, config)
     output = build_output_backend(config, process_launcher=process_launcher)
+    media_lock = RLock()
     station = StationService(
         config.channels,
         config.station,
         state_store,
         output,
         retry_policy=OutputRetryPolicy(),
+        media_lock=media_lock,
     )
 
     fetcher = HttpxFeedFetcher(
@@ -144,6 +147,11 @@ def build_runtime(
         fetcher,
         downloader,
         background_starter=background_starter,
+        media_lock=media_lock,
+        protected_episode=lambda: (
+            state_store.load_runtime_state().current_podcast_id,
+            state_store.load_runtime_state().current_episode_identity,
+        ),
     )
     scheduler = PeriodicScheduler(
         interval=timedelta(minutes=config.feeds.refresh_interval_minutes),

@@ -72,6 +72,7 @@ class PodcastConfig:
     id: str
     name: str
     feed_url: str
+    retention_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,7 @@ class FeedParseResult:
     feed_title: str | None = None
     entry_count: int = 0
     playable_entry_count: int = 0
+    episodes: tuple[Episode, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -111,6 +113,8 @@ class RuntimeState:
     volume: int = 100
     previous_podcast_ids: tuple[str, ...] = ()
     playback_supervisor_error: OutputError | None = None
+    current_episode_identity: str | None = None
+    episode_cursors: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -163,6 +167,8 @@ class DownloadMetadata:
     downloaded_at: datetime
     status: str = "downloaded"
     title: str | None = None
+    published_at: datetime | None = None
+    retained_episodes: tuple[Episode, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -225,6 +231,7 @@ class ChannelConfig:
     id: str
     name: str
     podcasts: tuple[PodcastConfig, ...]
+    retention_days: int | None = None
 
 
 @dataclass(frozen=True)

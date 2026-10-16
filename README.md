@@ -3,7 +3,8 @@
 */potcast/*, from Catalan *pot*: a junky device turned podcast appliance.
 
 Potcast is a personal podcast radio service. It monitors configured podcast RSS feeds,
-keeps the latest playable episode for each podcast, groups podcasts into channels, and
+keeps the latest playable episode and optionally recent episodes for each podcast,
+groups podcasts into channels, and
 lets simple HTTP commands control playback through Icecast or Raspberry Pi local audio.
 
 The current service runs one configured primary output backend. Feed refreshes keep local
@@ -114,3 +115,11 @@ mypy potcast
 
 The default suite does not require internet access, real podcast feeds, Icecast, audio
 devices, `ffmpeg`, `mpv`, or long sleeps.
+
+### Keep more than the latest episode
+
+Add `retention_days: 14` to a channel to keep two weeks of published episodes. Individual
+podcasts can override this value. Potcast alternates between programs and advances each
+program's episodes from oldest to newest, remembering its rotation across restarts.
+Without this setting it keeps only the latest episode. See
+[episode retention](docs/configuration.md#episode-retention) for examples and cleanup rules.
