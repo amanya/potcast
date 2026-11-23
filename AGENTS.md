@@ -228,3 +228,17 @@ Suggested order:
 10. Docker and deployment docs.
 
 Keep the test suite useful at every milestone.
+
+## Agent skills
+
+### Issue tracker
+
+Use GitHub Issues for Potcast tickets and specs. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Potcast uses a single-context layout. See `docs/agents/domain.md` before exploring domain terminology or architecture.
